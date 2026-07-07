@@ -8,16 +8,32 @@ interface AudioTranscriptionResult {
 }
 
 /**
- * Downloads audio from Telegram, sends it to Whisper (if API key exists) or mocks it, and deletes the temporary file.
+ * Transcribes audio. If fileId is a local filesystem path, transcribes it directly.
+ * Otherwise, downloads the file from Telegram and transcribes it.
  */
 export async function audioTranscriptionHandler(
   fileId: string,
   fileSize?: number
 ): Promise<AudioTranscriptionResult> {
-  console.log(`Starting audio transcription for Telegram fileId: ${fileId}`);
+  const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
 
-  // Check file size limit (25 MB = 25 * 1024 * 1024 bytes)
-  const MAX_SIZE = 25 * 1024 * 1024;
+  const isLocalFile = fs.existsSync(fileId);
+
+  if (isLocalFile) {
+    console.log(`[AudioTranscription] Detected local file path: ${fileId}. Transcribing directly...`);
+    const stats = await fs.promises.stat(fileId);
+    if (stats.size > MAX_SIZE) {
+      throw new Error(`Audio file exceeds Whisper limit of 25MB (Size: ${(stats.size / (1024 * 1024)).toFixed(2)}MB)`);
+    }
+
+    const buffer = await fs.promises.readFile(fileId);
+    const ext = path.extname(fileId) || '.mp3';
+
+    return executeTranscription(buffer, ext);
+  }
+
+  // Telegram Ingestion Path
+  console.log(`Starting audio transcription for Telegram fileId: ${fileId}`);
   if (fileSize && fileSize > MAX_SIZE) {
     throw new Error(`Audio file exceeds Whisper limit of 25MB (Size: ${(fileSize / (1024 * 1024)).toFixed(2)}MB)`);
   }
@@ -27,7 +43,6 @@ export async function audioTranscriptionHandler(
     throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
   }
 
-  // 1. Get file path from Telegram API
   const fileInfo = await bot.api.getFile(fileId);
   if (!fileInfo.file_path) {
     throw new Error(`Could not retrieve file path for Telegram fileId: ${fileId}`);
@@ -38,7 +53,6 @@ export async function audioTranscriptionHandler(
   const tempFilePath = path.join(os.tmpdir(), `tg-${fileId}${ext}`);
 
   try {
-    // 2. Download the file binary
     const response = await fetch(fileUrl);
     if (!response.ok) {
       throw new Error(`Failed to download audio file from Telegram: status ${response.status}`);
@@ -47,53 +61,16 @@ export async function audioTranscriptionHandler(
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
-    // Save to temp file on local disk
     await fs.promises.writeFile(tempFilePath, buffer);
     console.log(`Temporary audio file saved to: ${tempFilePath}`);
 
-    // Check actual file size on disk if not provided
     const stats = await fs.promises.stat(tempFilePath);
     if (stats.size > MAX_SIZE) {
       throw new Error(`Downloaded audio file exceeds Whisper limit of 25MB (Size: ${(stats.size / (1024 * 1024)).toFixed(2)}MB)`);
     }
 
-    // 3. Transcribe audio to text
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      console.log('OpenAI API Key detected. Sending audio to Whisper API...');
-      
-      const formData = new FormData();
-      // Native Blob in Node 18+
-      const blob = new Blob([buffer], { type: 'audio/ogg' });
-      formData.append('file', blob, `audio${ext}`);
-      formData.append('model', 'whisper-1');
-
-      const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: formData,
-      });
-
-      if (!whisperResponse.ok) {
-        const errorText = await whisperResponse.text();
-        throw new Error(`Whisper API transcription failed: status ${whisperResponse.status} - ${errorText}`);
-      }
-
-      const result = (await whisperResponse.json()) as { text: string };
-      console.log('Transcription succeeded via Whisper.');
-      return { content: result.text.trim() };
-    } else {
-      console.log('No OPENAI_API_KEY found. Using mock transcription.');
-      // Simulate API latency
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      return {
-        content: `[Transcripción Mock de Audio/Nota de voz de Telegram - ID del archivo: ${fileId}]`,
-      };
-    }
+    return await executeTranscription(buffer, ext);
   } finally {
-    // 4. Cleanup temporary files
     try {
       if (fs.existsSync(tempFilePath)) {
         await fs.promises.unlink(tempFilePath);
@@ -102,5 +79,43 @@ export async function audioTranscriptionHandler(
     } catch (cleanupError) {
       console.error(`Failed to clean up temporary audio file ${tempFilePath}:`, cleanupError);
     }
+  }
+}
+
+/**
+ * Helper to call Whisper API or fallback to mock transcription.
+ */
+async function executeTranscription(buffer: Buffer, ext: string): Promise<AudioTranscriptionResult> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    console.log('[AudioTranscription] Sending audio buffer to Whisper API...');
+    
+    const formData = new FormData();
+    const blob = new Blob([buffer as any], { type: 'audio/mpeg' });
+    formData.append('file', blob, `audio${ext}`);
+    formData.append('model', 'whisper-1');
+
+    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    if (!whisperResponse.ok) {
+      const errorText = await whisperResponse.text();
+      throw new Error(`Whisper API transcription failed: status ${whisperResponse.status} - ${errorText}`);
+    }
+
+    const result = (await whisperResponse.json()) as { text: string };
+    console.log('[AudioTranscription] Transcription succeeded via Whisper.');
+    return { content: result.text.trim() };
+  } else {
+    console.log('[AudioTranscription] No OPENAI_API_KEY found. Using mock transcription.');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return {
+      content: `[Transcripción Mock de Audio - Extensión: ${ext}]`,
+    };
   }
 }

@@ -28,8 +28,8 @@ export async function graphExtractionHandler(itemId: string): Promise<void> {
     return;
   }
 
-  // 1. Extract raw nodes & edges using LLM structured outputs
-  const extractionResult = await GraphExtractionService.extractGraph(content);
+  // 1. Extract raw nodes & edges using LLM structured outputs (passing itemId for token usage tracking)
+  const extractionResult = await GraphExtractionService.extractGraph(content, itemId);
   
   if (extractionResult.nodes.length === 0) {
     console.log(`[GraphExtractionHandler] No entities extracted for item ${itemId}.`);
@@ -51,8 +51,8 @@ export async function graphExtractionHandler(itemId: string): Promise<void> {
       resolvedNodesMap.set(node.name, nodeId);
       console.log(`[GraphExtractionHandler] Resolved entity "${node.name}" to existing node ID ${nodeId}`);
     } else {
-      // If it is a new node, generate its embedding for future similarity queries
-      const [embedding] = await EmbeddingService.generateEmbeddings([node.name]);
+      // If it is a new node, generate its embedding for future similarity queries (passing itemId for tracking)
+      const [embedding] = await EmbeddingService.generateEmbeddings([node.name], itemId);
       
       nodeId = await GraphRepo.saveNode({
         label: node.label,

@@ -131,7 +131,7 @@ bot.command('ask', async (ctx) => {
     await ctx.replyWithChatAction('typing');
 
     // Call hybrid RAG service
-    const result = await RagService.answerQuery(queryText);
+    const result = await RagService.answerQuery(queryText, ctx.chat.id.toString());
 
     // Format response
     let responseText = result.answer;
@@ -222,7 +222,7 @@ bot.command('verify', async (ctx) => {
 });
 
 // Start bot if run directly
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   bot.start().then(() => {
     console.log('Telegram Capture Bot is running...');
   }).catch((err) => {

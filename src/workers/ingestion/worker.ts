@@ -3,6 +3,7 @@ import { createRedisClient } from '../../config/redis.js';
 import { CapturedItemsRepo } from '../../db/capturedItemsRepo.js';
 import { webExtractionHandler } from './handlers/webExtractionHandler.js';
 import { audioTranscriptionHandler } from './handlers/audioTranscriptionHandler.js';
+import { socialMediaHandler } from './handlers/socialMediaHandler.js';
 import { embeddingQueue } from '../embedding/queue.js';
 
 const workerRedisClient = createRedisClient();
@@ -20,7 +21,25 @@ export const worker = new Worker(
 
     const type = item.detectedSource || 'text';
 
-    if (type === 'web' || type === 'url' || (item.originalUrl && !['youtube', 'tiktok', 'instagram', 'x', 'linkedin', 'reddit', 'github', 'pdf'].includes(type))) {
+    if (type === 'youtube' || type === 'tiktok') {
+      if (!item.originalUrl) {
+        throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
+      }
+
+      console.log(`[Worker] Routing item ${itemId} to Social Media Ingestion Handler`);
+      await CapturedItemsRepo.update(itemId, { status: 'extracting' });
+      
+      const result = await socialMediaHandler(item.originalUrl, itemId);
+      
+      await CapturedItemsRepo.update(itemId, {
+        status: 'extracted',
+        title: result.title,
+        content: result.content,
+        error: null,
+      });
+      console.log(`[Worker] Item ${itemId} processed successfully via Social Media Ingestion`);
+
+    } else if (type === 'web' || type === 'url' || (item.originalUrl && !['youtube', 'tiktok', 'instagram', 'x', 'linkedin', 'reddit', 'github', 'pdf'].includes(type))) {
       if (!item.originalUrl) {
         throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
       }
@@ -76,6 +95,10 @@ export const worker = new Worker(
   {
     connection: workerRedisClient as any,
     concurrency: 2, // process up to 2 items concurrently
+    limiter: {
+      max: 5,
+      duration: 60000, // 5 jobs per minute (rate limit for media tasks)
+    },
   }
 );
 

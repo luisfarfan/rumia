@@ -78,4 +78,21 @@ CREATE TABLE IF NOT EXISTS claim_verifications (
 
 CREATE INDEX IF NOT EXISTS idx_claim_verifications_item_id ON claim_verifications(item_id);
 
+CREATE TABLE IF NOT EXISTS token_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    item_id UUID REFERENCES captured_items(id) ON DELETE SET NULL,
+    session_id VARCHAR(100),
+    flow VARCHAR(50) NOT NULL, -- 'web_extraction', 'chunking', 'embedding', 'graph_extraction', 'rag_query', 'fact_checking'
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    prompt_tokens INTEGER NOT NULL,
+    completion_tokens INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_usage_item_id ON token_usage(item_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_flow ON token_usage(flow);
+CREATE INDEX IF NOT EXISTS idx_token_usage_session_id ON token_usage(session_id);
+
 

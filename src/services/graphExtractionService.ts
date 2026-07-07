@@ -8,8 +8,9 @@ dotenv.config();
 export class GraphExtractionService {
   /**
    * Extracts nodes and relations from text using the configured LLM provider and structured outputs.
+   * Tracks token usage with the provided itemId.
    */
-  static async extractGraph(text: string): Promise<GraphExtractionResult> {
+  static async extractGraph(text: string, itemId: string): Promise<GraphExtractionResult> {
     try {
       console.log('[GraphExtractionService] Requesting structured graph extraction from configured chat provider...');
 
@@ -24,6 +25,10 @@ Do not extract trivial entities. Ensure relationships are clear and informative.
           modelTier: 'flash',
           systemPrompt,
           schemaName: 'graph_extraction',
+          usageMeta: {
+            flow: 'graph_extraction',
+            itemId,
+          },
         }
       );
 

@@ -35,7 +35,7 @@ export async function embeddingHandler(itemId: string): Promise<void> {
 
   // 3. Embedding: generate vector representations
   console.log(`[EmbeddingHandler] Generating embeddings for ${chunks.length} chunks`);
-  const embeddings = await EmbeddingService.generateEmbeddings(chunks);
+  const embeddings = await EmbeddingService.generateEmbeddings(chunks, itemId);
 
   // 4. Persistence: save chunks and embeddings
   const mappedChunks = chunks.map((chunkText, index) => ({

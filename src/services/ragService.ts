@@ -19,11 +19,12 @@ export class RagService {
   /**
    * Performs Hybrid RAG (Vector Search on Chunks + Neighbor Traversal in Graph)
    * and generates a grounded response using the configured LLM provider.
+   * Tracks token usage with the optional sessionId.
    */
-  static async answerQuery(queryText: string): Promise<RagResult> {
+  static async answerQuery(queryText: string, sessionId?: string): Promise<RagResult> {
     console.log(`[RagService] Processing query: "${queryText}"`);
 
-    // 1. Embed query
+    // 1. Embed query (note: embedding generation inside RAG query doesn't belong to a document itemId, so we skip passing itemId)
     console.log('[RagService] Generating query embedding...');
     const [queryEmbedding] = await EmbeddingService.generateEmbeddings([queryText]);
     if (!queryEmbedding) {
@@ -144,6 +145,10 @@ Format your response in clean Markdown. Refer to the sources as [Source 1], [Sou
     const answer = await LLMFactory.getChatProvider().generateCompletion(userMessage, {
       systemPrompt,
       modelTier: 'flash',
+      usageMeta: {
+        flow: 'rag_query',
+        sessionId,
+      },
     });
 
     return {

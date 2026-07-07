@@ -44,6 +44,10 @@ async function extractClaims(state: typeof FactCheckerState.State) {
         modelTier: 'flash',
         systemPrompt,
         schemaName: 'claims_extraction',
+        usageMeta: {
+          flow: 'fact_checking',
+          itemId: state.itemId,
+        },
       }
     );
     return { claims: parsed.claims };
@@ -92,6 +96,10 @@ Be objective and strict. If sources are conflicting or insufficient, mark it as 
             modelTier: 'flash',
             systemPrompt,
             schemaName: 'claim_evaluation',
+            usageMeta: {
+              flow: 'fact_checking',
+              itemId: state.itemId,
+            },
           }
         );
 

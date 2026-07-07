@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: autodiscovery_db
+    environment:
+      POSTGRES_USER: autodiscovery
+      POSTGRES_PASSWORD: autodiscovery_password
+      POSTGRES_DB: autodiscovery
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: autodiscovery_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Usamos la imagen local cliproxy:dev que vi en tu sistema
+  # cliproxy:
+  #   image: cliproxy:dev
+  #   container_name: autodiscovery_cliproxy
+  #   ports:
+  #     - "3000:8317"
+  #   volumes:
+  #     - ./config.yaml:/CLIProxyAPI/config.yaml # Requiere tu archivo config
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
