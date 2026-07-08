@@ -39,6 +39,8 @@ export class CapturedItemsRepo {
         mime_type AS "mimeType",
         file_size AS "fileSize",
         error, 
+        category,
+        tags,
         created_at AS "createdAt", 
         updated_at AS "updatedAt";
     `;
@@ -80,6 +82,8 @@ export class CapturedItemsRepo {
         mime_type AS "mimeType",
         file_size AS "fileSize",
         error, 
+        category,
+        tags,
         created_at AS "createdAt", 
         updated_at AS "updatedAt"
       FROM captured_items
@@ -101,6 +105,8 @@ export class CapturedItemsRepo {
       mimeType?: string;
       fileSize?: number;
       error?: string | null;
+      category?: string;
+      tags?: string[];
     }
   ): Promise<CapturedItem | null> {
     const fields: string[] = [];
@@ -143,6 +149,14 @@ export class CapturedItemsRepo {
       fields.push(`error = $${placeholderIndex++}`);
       values.push(updates.error);
     }
+    if (updates.category !== undefined) {
+      fields.push(`category = $${placeholderIndex++}`);
+      values.push(updates.category);
+    }
+    if (updates.tags !== undefined) {
+      fields.push(`tags = $${placeholderIndex++}`);
+      values.push(JSON.stringify(updates.tags));
+    }
 
     if (fields.length === 0) {
       return this.findById(id);
@@ -172,6 +186,8 @@ export class CapturedItemsRepo {
         mime_type AS "mimeType",
         file_size AS "fileSize",
         error, 
+        category,
+        tags,
         created_at AS "createdAt", 
         updated_at AS "updatedAt";
     `;

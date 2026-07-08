@@ -4,9 +4,19 @@ import { CapturedItemsRepo } from '../../db/capturedItemsRepo.js';
 import { webExtractionHandler } from './handlers/webExtractionHandler.js';
 import { audioTranscriptionHandler } from './handlers/audioTranscriptionHandler.js';
 import { socialMediaHandler } from './handlers/socialMediaHandler.js';
+import { runCategorizationAgent } from '../../agents/categorizationAgent.js';
+import { runFactCheckerAgent } from '../../agents/factCheckerAgent.js';
 import { embeddingQueue } from '../embedding/queue.js';
 
 const workerRedisClient = createRedisClient();
+
+/**
+ * Truncates text to a safe character limit before passing to LLM APIs.
+ */
+function truncateText(text: string, maxLen: number = 8000): string {
+  if (!text) return '';
+  return text.length > maxLen ? text.substring(0, maxLen) : text;
+}
 
 export const worker = new Worker(
   'ingestionQueue',
@@ -21,6 +31,10 @@ export const worker = new Worker(
 
     const type = item.detectedSource || 'text';
 
+    let finalContent = '';
+    let finalTitle = '';
+    let finalDescription = '';
+
     if (type === 'youtube' || type === 'tiktok') {
       if (!item.originalUrl) {
         throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
@@ -30,13 +44,8 @@ export const worker = new Worker(
       await CapturedItemsRepo.update(itemId, { status: 'extracting' });
       
       const result = await socialMediaHandler(item.originalUrl, itemId);
-      
-      await CapturedItemsRepo.update(itemId, {
-        status: 'extracted',
-        title: result.title,
-        content: result.content,
-        error: null,
-      });
+      finalTitle = result.title;
+      finalContent = result.content;
       console.log(`[Worker] Item ${itemId} processed successfully via Social Media Ingestion`);
 
     } else if (type === 'web' || type === 'url' || (item.originalUrl && !['youtube', 'tiktok', 'instagram', 'x', 'linkedin', 'reddit', 'github', 'pdf'].includes(type))) {
@@ -48,14 +57,9 @@ export const worker = new Worker(
       await CapturedItemsRepo.update(itemId, { status: 'extracting' });
       
       const result = await webExtractionHandler(item.originalUrl);
-      
-      await CapturedItemsRepo.update(itemId, {
-        status: 'extracted',
-        title: result.title,
-        description: result.description,
-        content: result.content,
-        error: null,
-      });
+      finalTitle = result.title;
+      finalDescription = result.description || '';
+      finalContent = result.content;
       console.log(`[Worker] Item ${itemId} processed successfully via Web Extraction`);
       
     } else if (type === 'audio' || type === 'voice') {
@@ -67,22 +71,56 @@ export const worker = new Worker(
       await CapturedItemsRepo.update(itemId, { status: 'transcribing' });
       
       const result = await audioTranscriptionHandler(item.fileId, item.fileSize);
-      
-      await CapturedItemsRepo.update(itemId, {
-        status: 'extracted',
-        content: result.content,
-        error: null,
-      });
+      finalContent = result.content;
       console.log(`[Worker] Item ${itemId} processed successfully via Audio Transcription`);
       
     } else {
       console.log(`[Worker] Item ${itemId} has unhandled source type: "${type}". Skipping processing.`);
-      await CapturedItemsRepo.update(itemId, {
-        status: 'extracted',
-        content: item.rawInput,
-        error: null,
-      });
+      finalContent = item.rawInput;
     }
+
+    // --- PIPELINE STEP: Categorization (Resilient) ---
+    let category = 'Other';
+    let tags: string[] = [];
+
+    const textToAnalyze = truncateText(finalContent || finalDescription || item.rawInput, 8000);
+    
+    if (textToAnalyze.trim()) {
+      try {
+        console.log(`[Worker] Invoking CategorizationAgent for item ${itemId}`);
+        const catResult = await runCategorizationAgent(textToAnalyze, itemId);
+        category = catResult.category;
+        tags = catResult.tags;
+      } catch (catError) {
+        console.error(`[Worker] CategorizationAgent failed for item ${itemId}. Falling back to 'Unknown':`, catError);
+        category = 'Unknown';
+        tags = [];
+      }
+
+      // --- PIPELINE STEP: Conditional Fact Checking (Resilient) ---
+      const factCheckingEligible = ['News', 'Opinion', 'Tutorial'];
+      if (factCheckingEligible.includes(category)) {
+        try {
+          console.log(`[Worker] Category "${category}" is eligible for fact-checking. Invoking FactCheckerAgent...`);
+          await runFactCheckerAgent(itemId, textToAnalyze);
+        } catch (factError) {
+          console.error(`[Worker] FactCheckerAgent failed for item ${itemId} (gracefully continuing):`, factError);
+        }
+      } else {
+        console.log(`[Worker] Category "${category}" is not eligible for fact-checking. Skipping.`);
+      }
+    }
+
+    // --- Update DB status to 'extracted' with all results ---
+    await CapturedItemsRepo.update(itemId, {
+      status: 'extracted',
+      title: finalTitle || undefined,
+      description: finalDescription || undefined,
+      content: finalContent || undefined,
+      category,
+      tags,
+      error: null,
+    });
 
     // Enqueue job in embeddingQueue for Phase 3 (chunking and embedding)
     try {

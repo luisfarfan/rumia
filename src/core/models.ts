@@ -51,6 +51,8 @@ export interface CapturedItem {
   mimeType?: string;
   fileSize?: number;
   error?: string;
+  category?: string;
+  tags?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
