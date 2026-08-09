@@ -1,3 +1,7 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 
 import { dispatchIngestion, type IngestionHandlers } from '../src/workers/ingestion/dispatchIngestion.js';
@@ -23,6 +27,39 @@ describe('dispatchIngestion', () => {
   it('es invocable sin BullMQ ni Redis: ninguna de sus dependencias importa esos módulos', async () => {
     const mod = await import('../src/workers/ingestion/dispatchIngestion.js');
     expect(typeof mod.dispatchIngestion).toBe('function');
+  });
+
+  it('la sola importación no depende de TELEGRAM_BOT_TOKEN ni de Redis: sobrevive en un proceso hijo con env vacío y sin .env', () => {
+    // Real isolation check: importing dispatchIngestion.js must not transitively
+    // load a module with a load-time side effect that needs these vars (e.g. the
+    // Telegram bot client calling process.exit(1) without a token). A child
+    // process with a scrubbed env and a cwd with no .env file is the only way to
+    // catch that — asserting on the live process's env would just reflect
+    // whatever happens to be in the developer's .env.
+    const tsxBin = path.resolve(process.cwd(), 'node_modules/.bin/tsx');
+    const fixture = path.resolve(process.cwd(), 'tests/fixtures/importDispatchIngestion.ts');
+
+    const scrubbedEnv: NodeJS.ProcessEnv = { ...process.env };
+    delete scrubbedEnv.TELEGRAM_BOT_TOKEN;
+    delete scrubbedEnv.REDIS_URL;
+    delete scrubbedEnv.REDIS_HOST;
+
+    // An isolated cwd with no .env guarantees dotenv.config() (called deep in
+    // the bot module) cannot silently repopulate the vars we just deleted.
+    const isolatedCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-isolation-'));
+
+    try {
+      const result = spawnSync(tsxBin, [fixture], {
+        cwd: isolatedCwd,
+        env: scrubbedEnv,
+        encoding: 'utf-8',
+        timeout: 30_000,
+      });
+
+      expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    } finally {
+      fs.rmSync(isolatedCwd, { recursive: true, force: true });
+    }
   });
 
   it.each(['github', 'x', 'linkedin'])(

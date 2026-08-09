@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { webExtractionHandler } from '../src/workers/ingestion/handlers/webExtractionHandler.js';
@@ -41,12 +41,23 @@ describe('webExtractionHandler', () => {
   });
 
   it('el literal "No readable text extracted." ya no aparece en el fuente de src/', () => {
-    const matches = execSync(
-      `grep -rl "No readable text extracted" src/ || true`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
-    ).trim();
+    // A positive control first: if this fails, `grep` isn't scanning real files
+    // (missing src/, wrong cwd, grep unavailable) and the negative check below
+    // would otherwise pass vacuously for the wrong reason.
+    const controlStatus = spawnSync('grep', ['-rq', 'webExtractionHandler', 'src/'], {
+      cwd: process.cwd(),
+    }).status;
+    expect(controlStatus, 'control grep found nothing: src/ was not actually scanned').toBe(0);
 
-    expect(matches).toBe('');
+    // grep exit status: 0 = found (bad, literal still present), 1 = not found (good),
+    // anything else = grep itself failed (missing binary, bad path, ...) and must
+    // not be read as "the literal is absent".
+    const result = spawnSync('grep', ['-rl', 'No readable text extracted', 'src/'], {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+    });
+
+    expect(result.status, `grep exited unexpectedly (status ${result.status}); stderr: ${result.stderr}`).toBe(1);
   });
 
   it('cuando hay meta description pero no artículo legible, esa description se devuelve como contenido', async () => {

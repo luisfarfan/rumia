@@ -1,7 +1,11 @@
 import type { CapturedItem } from '../../core/models.js';
-import { webExtractionHandler } from './handlers/webExtractionHandler.js';
-import { audioTranscriptionHandler } from './handlers/audioTranscriptionHandler.js';
-import { socialMediaHandler } from './handlers/socialMediaHandler.js';
+// Type-only imports: erased at compile time, so referencing these handlers' types
+// does not pull their modules (or anything *they* import, e.g. the Telegram bot
+// client) into dispatchIngestion's module graph. The real functions are loaded
+// lazily, only for the branch that actually needs them — see `load*Handler` below.
+import type { webExtractionHandler as WebExtractionHandlerFn } from './handlers/webExtractionHandler.js';
+import type { audioTranscriptionHandler as AudioTranscriptionHandlerFn } from './handlers/audioTranscriptionHandler.js';
+import type { socialMediaHandler as SocialMediaHandlerFn } from './handlers/socialMediaHandler.js';
 
 /** The subset of a captured item the dispatcher needs to pick and run a handler. */
 export type DispatchableItem = Pick<
@@ -18,17 +22,32 @@ export interface DispatchIngestionResult {
 }
 
 export interface IngestionHandlers {
-  webExtractionHandler: typeof webExtractionHandler;
-  audioTranscriptionHandler: typeof audioTranscriptionHandler;
-  socialMediaHandler: typeof socialMediaHandler;
+  webExtractionHandler: typeof WebExtractionHandlerFn;
+  audioTranscriptionHandler: typeof AudioTranscriptionHandlerFn;
+  socialMediaHandler: typeof SocialMediaHandlerFn;
 }
 
-/** The real handlers, used when the caller does not inject fakes (i.e. in production). */
-export const defaultIngestionHandlers: IngestionHandlers = {
-  webExtractionHandler,
-  audioTranscriptionHandler,
-  socialMediaHandler,
-};
+/** Lazily imports the real web-extraction handler. Only called when an item is
+ *  actually routed to web extraction and no `handlers` override was injected. */
+async function loadWebExtractionHandler(): Promise<typeof WebExtractionHandlerFn> {
+  const mod = await import('./handlers/webExtractionHandler.js');
+  return mod.webExtractionHandler;
+}
+
+/** Lazily imports the real audio-transcription handler (and, transitively, the
+ *  Telegram bot client). Only called when an item is actually routed to audio
+ *  transcription and no `handlers` override was injected. */
+async function loadAudioTranscriptionHandler(): Promise<typeof AudioTranscriptionHandlerFn> {
+  const mod = await import('./handlers/audioTranscriptionHandler.js');
+  return mod.audioTranscriptionHandler;
+}
+
+/** Lazily imports the real social-media handler. Only called when an item is
+ *  actually routed to youtube/tiktok and no `handlers` override was injected. */
+async function loadSocialMediaHandler(): Promise<typeof SocialMediaHandlerFn> {
+  const mod = await import('./handlers/socialMediaHandler.js');
+  return mod.socialMediaHandler;
+}
 
 export type IngestionStatus = 'extracting' | 'transcribing';
 
@@ -62,7 +81,10 @@ const WEB_SOURCE_TYPES = new Set(['web', 'url', 'github', 'x', 'linkedin']);
  * BullMQ worker, tests) never need to know the list of source types themselves.
  * Invocable without a queue or a Redis connection — it only depends on the handler
  * functions themselves (which can be swapped via `handlers` for testing) and an
- * optional status-update callback.
+ * optional status-update callback. Handlers are imported lazily, one at a time,
+ * only for the branch actually taken: dispatching a github/x/linkedin item never
+ * loads the audio-transcription handler's module graph, so it never touches the
+ * Telegram bot client either.
  *
  * When the selected handler throws, this function propagates the error rather than
  * turning it into content (D2) — callers see a failed item, not a fabricated one.
@@ -72,7 +94,6 @@ export async function dispatchIngestion(
   itemId: string,
   options: { handlers?: IngestionHandlers; onStatusChange?: StatusUpdater } = {}
 ): Promise<DispatchIngestionResult> {
-  const handlers = options.handlers ?? defaultIngestionHandlers;
   const onStatusChange = options.onStatusChange ?? (async () => {});
   const type = item.detectedSource || 'text';
 
@@ -83,7 +104,8 @@ export async function dispatchIngestion(
 
     await onStatusChange('extracting');
 
-    const result = await handlers.socialMediaHandler(item.originalUrl, itemId);
+    const socialMediaHandler = options.handlers?.socialMediaHandler ?? (await loadSocialMediaHandler());
+    const result = await socialMediaHandler(item.originalUrl, itemId);
     return { handled: true, title: result.title, content: result.content, description: '' };
   }
 
@@ -97,7 +119,8 @@ export async function dispatchIngestion(
 
     await onStatusChange('extracting');
 
-    const result = await handlers.webExtractionHandler(item.originalUrl);
+    const webExtractionHandler = options.handlers?.webExtractionHandler ?? (await loadWebExtractionHandler());
+    const result = await webExtractionHandler(item.originalUrl);
     return {
       handled: true,
       title: result.title,
@@ -113,7 +136,9 @@ export async function dispatchIngestion(
 
     await onStatusChange('transcribing');
 
-    const result = await handlers.audioTranscriptionHandler(item.fileId, item.fileSize);
+    const audioTranscriptionHandler =
+      options.handlers?.audioTranscriptionHandler ?? (await loadAudioTranscriptionHandler());
+    const result = await audioTranscriptionHandler(item.fileId, item.fileSize);
     return { handled: true, title: '', content: result.content, description: '' };
   }
 
