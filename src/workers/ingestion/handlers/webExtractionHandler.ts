@@ -38,7 +38,18 @@ export async function webExtractionHandler(url: string): Promise<WebExtractionRe
   const article = reader.parse();
 
   if (!article) {
-    throw new Error(`Could not extract readable article content from URL: ${url}`);
+    const trimmedDescription = description.trim();
+
+    if (!trimmedDescription) {
+      throw new Error(`No readable article or meta description found for ${url}`);
+    }
+
+    console.warn(`[WebExtraction] Readability returned null for ${url}. Falling back to meta description.`);
+    return {
+      title: doc.title || 'Untitled',
+      description: trimmedDescription,
+      content: trimmedDescription,
+    };
   }
 
   return {
