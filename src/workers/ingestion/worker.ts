@@ -1,9 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { createRedisClient } from '../../config/redis.js';
 import { CapturedItemsRepo } from '../../db/capturedItemsRepo.js';
-import { webExtractionHandler } from './handlers/webExtractionHandler.js';
-import { audioTranscriptionHandler } from './handlers/audioTranscriptionHandler.js';
-import { socialMediaHandler } from './handlers/socialMediaHandler.js';
+import { dispatchIngestion } from './dispatchIngestion.js';
 import { runCategorizationAgent } from '../../agents/categorizationAgent.js';
 import { runFactCheckerAgent } from '../../agents/factCheckerAgent.js';
 import { embeddingQueue } from '../embedding/queue.js';
@@ -29,54 +27,24 @@ export const worker = new Worker(
       throw new Error(`Item with ID ${itemId} not found in the database.`);
     }
 
-    const type = item.detectedSource || 'text';
+    const dispatchResult = await dispatchIngestion(item, itemId, {
+      onStatusChange: (status) => CapturedItemsRepo.update(itemId, { status }).then(() => {}),
+    });
 
-    let finalContent = '';
-    let finalTitle = '';
-    let finalDescription = '';
+    const finalTitle = dispatchResult.title;
+    const finalDescription = dispatchResult.description;
+    const finalContent = dispatchResult.content;
+    // Records that the item was ingested with a piece of the pipeline unavailable,
+    // so a degraded entry is distinguishable from a complete one after the fact.
+    const degradedReason = dispatchResult.degradedReason;
 
-    if (type === 'youtube' || type === 'tiktok') {
-      if (!item.originalUrl) {
-        throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
+    if (dispatchResult.handled) {
+      console.log(`[Worker] Item ${itemId} processed successfully (source: ${item.detectedSource || 'text'})`);
+      if (degradedReason) {
+        console.warn(`[Worker] Item ${itemId} ingested in a degraded state: ${degradedReason}`);
       }
-
-      console.log(`[Worker] Routing item ${itemId} to Social Media Ingestion Handler`);
-      await CapturedItemsRepo.update(itemId, { status: 'extracting' });
-      
-      const result = await socialMediaHandler(item.originalUrl, itemId);
-      finalTitle = result.title;
-      finalContent = result.content;
-      console.log(`[Worker] Item ${itemId} processed successfully via Social Media Ingestion`);
-
-    } else if (type === 'web' || type === 'url' || (item.originalUrl && !['youtube', 'tiktok', 'instagram', 'x', 'linkedin', 'reddit', 'github', 'pdf'].includes(type))) {
-      if (!item.originalUrl) {
-        throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
-      }
-
-      console.log(`[Worker] Routing item ${itemId} to Web Extraction Handler`);
-      await CapturedItemsRepo.update(itemId, { status: 'extracting' });
-      
-      const result = await webExtractionHandler(item.originalUrl);
-      finalTitle = result.title;
-      finalDescription = result.description || '';
-      finalContent = result.content;
-      console.log(`[Worker] Item ${itemId} processed successfully via Web Extraction`);
-      
-    } else if (type === 'audio' || type === 'voice') {
-      if (!item.fileId) {
-        throw new Error(`Item ${itemId} has source type ${type} but no fileId.`);
-      }
-
-      console.log(`[Worker] Routing item ${itemId} to Audio Transcription Handler`);
-      await CapturedItemsRepo.update(itemId, { status: 'transcribing' });
-      
-      const result = await audioTranscriptionHandler(item.fileId, item.fileSize);
-      finalContent = result.content;
-      console.log(`[Worker] Item ${itemId} processed successfully via Audio Transcription`);
-      
     } else {
-      console.log(`[Worker] Item ${itemId} has unhandled source type: "${type}". Skipping processing.`);
-      finalContent = item.rawInput;
+      console.log(`[Worker] Item ${itemId} has unhandled source type: "${item.detectedSource || 'text'}". Skipping processing.`);
     }
 
     // --- PIPELINE STEP: Categorization (Resilient) ---
@@ -119,7 +87,7 @@ export const worker = new Worker(
       content: finalContent || undefined,
       category,
       tags,
-      error: null,
+      error: degradedReason,
     });
 
     // Enqueue job in embeddingQueue for Phase 3 (chunking and embedding)
