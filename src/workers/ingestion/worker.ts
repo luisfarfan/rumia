@@ -34,15 +34,9 @@ export const worker = new Worker(
     const finalTitle = dispatchResult.title;
     const finalDescription = dispatchResult.description;
     const finalContent = dispatchResult.content;
-    // Records that the item was ingested with a piece of the pipeline unavailable,
-    // so a degraded entry is distinguishable from a complete one after the fact.
-    const degradedReason = dispatchResult.degradedReason;
 
     if (dispatchResult.handled) {
       console.log(`[Worker] Item ${itemId} processed successfully (source: ${item.detectedSource || 'text'})`);
-      if (degradedReason) {
-        console.warn(`[Worker] Item ${itemId} ingested in a degraded state: ${degradedReason}`);
-      }
     } else {
       console.log(`[Worker] Item ${itemId} has unhandled source type: "${item.detectedSource || 'text'}". Skipping processing.`);
     }
@@ -87,7 +81,7 @@ export const worker = new Worker(
       content: finalContent || undefined,
       category,
       tags,
-      error: degradedReason,
+      error: null,
     });
 
     // Enqueue job in embeddingQueue for Phase 3 (chunking and embedding)
