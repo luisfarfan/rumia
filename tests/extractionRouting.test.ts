@@ -15,8 +15,6 @@ function fakeHandlers(overrides: Partial<IngestionHandlers> = {}): IngestionHand
     webExtractionHandler: vi.fn(async () => ({ title: 'web title', description: 'web desc', content: 'web content' })),
     audioTranscriptionHandler: vi.fn(async () => ({ content: 'audio content' })),
     socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false })),
-    tiktokCarouselHandler: vi.fn(async () => ({ title: 'carousel title', content: 'carousel content' })),
-    photoHandler: vi.fn(async () => ({ title: 'photo title', content: 'photo content' })),
     ...overrides,
   };
 }
@@ -44,7 +42,6 @@ describe('dispatchIngestion', () => {
         title: 'web title',
         content: 'web content',
         description: 'web desc',
-        degradedReason: null,
       });
     }
   );
@@ -77,7 +74,7 @@ describe('dispatchIngestion', () => {
     expect(result.handled).toBe(true);
   });
 
-  it('photo conserva el photo handler', async () => {
+  it('photo no tiene handler dedicado todavía y cae en la rama no manejada', async () => {
     const handlers = fakeHandlers();
 
     const result = await dispatchIngestion(
@@ -86,9 +83,11 @@ describe('dispatchIngestion', () => {
       { handlers }
     );
 
-    expect(handlers.photoHandler).toHaveBeenCalledWith('file-1', { caption: 'una nota', itemId: 'item-4' });
-    expect(result.handled).toBe(true);
-    expect(result.content).toBe('photo content');
+    expect(result.handled).toBe(false);
+    expect(result.content).toBe('una nota');
+    expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
+    expect(handlers.socialMediaHandler).not.toHaveBeenCalled();
+    expect(handlers.audioTranscriptionHandler).not.toHaveBeenCalled();
   });
 
   it.each(['audio', 'voice'])('%s conserva el audio transcription handler', async (detectedSource) => {
@@ -121,7 +120,6 @@ describe('dispatchIngestion', () => {
       expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
       expect(handlers.socialMediaHandler).not.toHaveBeenCalled();
       expect(handlers.audioTranscriptionHandler).not.toHaveBeenCalled();
-      expect(handlers.photoHandler).not.toHaveBeenCalled();
     }
   );
 

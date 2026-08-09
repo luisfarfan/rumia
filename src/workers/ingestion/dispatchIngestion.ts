@@ -2,8 +2,6 @@ import type { CapturedItem } from '../../core/models.js';
 import { webExtractionHandler } from './handlers/webExtractionHandler.js';
 import { audioTranscriptionHandler } from './handlers/audioTranscriptionHandler.js';
 import { socialMediaHandler } from './handlers/socialMediaHandler.js';
-import { tiktokCarouselHandler } from './handlers/tiktokCarouselHandler.js';
-import { photoHandler } from './handlers/photoHandler.js';
 
 /** The subset of a captured item the dispatcher needs to pick and run a handler. */
 export type DispatchableItem = Pick<
@@ -17,15 +15,12 @@ export interface DispatchIngestionResult {
   title: string;
   content: string;
   description: string;
-  degradedReason: string | null;
 }
 
 export interface IngestionHandlers {
   webExtractionHandler: typeof webExtractionHandler;
   audioTranscriptionHandler: typeof audioTranscriptionHandler;
   socialMediaHandler: typeof socialMediaHandler;
-  tiktokCarouselHandler: typeof tiktokCarouselHandler;
-  photoHandler: typeof photoHandler;
 }
 
 /** The real handlers, used when the caller does not inject fakes (i.e. in production). */
@@ -33,8 +28,6 @@ export const defaultIngestionHandlers: IngestionHandlers = {
   webExtractionHandler,
   audioTranscriptionHandler,
   socialMediaHandler,
-  tiktokCarouselHandler,
-  photoHandler,
 };
 
 export type IngestionStatus = 'extracting' | 'transcribing';
@@ -44,7 +37,9 @@ export type StatusUpdater = (status: IngestionStatus) => Promise<void>;
 
 /** Source types with their own dedicated handler; anything else with a URL falls
  *  through to generic web extraction. Reddit and Instagram are deliberately kept
- *  out of that fallback (D1): they need their own route, not a generic scrape. */
+ *  out of that fallback (D1): they need their own route, not a generic scrape.
+ *  `photo` has no dedicated handler yet — kept out of the fallback so an item with
+ *  no fileId-driven route doesn't silently get scraped as if it were a web page. */
 const NON_WEB_SOURCE_TYPES = new Set([
   'youtube',
   'tiktok',
@@ -88,61 +83,8 @@ export async function dispatchIngestion(
 
     await onStatusChange('extracting');
 
-    let title = '';
-    let content = '';
-    let description = '';
-    let degradedReason: string | null = null;
-
-    try {
-      const result = await handlers.socialMediaHandler(item.originalUrl, itemId);
-      title = result.title;
-      content = result.content;
-      if (result.visualAnalysisFailed) {
-        degradedReason = 'visual analysis unavailable: entry built from audio/subtitles only';
-      }
-    } catch (smError: any) {
-      const errorText = (smError.message || '') + ' ' + (smError.stderr || '') + ' ' + String(smError);
-      // yt-dlp rejects TikTok photo carousels with "Unsupported URL". Those are
-      // not broken links — they are slideshows, and the scraper API can read them.
-      if (errorText.includes('Unsupported URL') && type === 'tiktok') {
-        try {
-          const carousel = await handlers.tiktokCarouselHandler(item.originalUrl, itemId);
-          title = carousel.title;
-          content = carousel.content;
-        } catch {
-          const result = await handlers.webExtractionHandler(item.originalUrl);
-          title = result.title;
-          description = result.description || '';
-          content = result.content;
-          degradedReason = 'tiktok carousel unavailable: fell back to page metadata';
-        }
-      } else if (errorText.includes('Unsupported URL')) {
-        const result = await handlers.webExtractionHandler(item.originalUrl);
-        title = result.title;
-        description = result.description || '';
-        content = result.content;
-      } else {
-        throw smError; // Rethrow if it's a different error
-      }
-    }
-
-    return { handled: true, title, content, description, degradedReason };
-  }
-
-  if (type === 'photo') {
-    if (!item.fileId) {
-      throw new Error(`Item ${itemId} has source type photo but no fileId.`);
-    }
-
-    await onStatusChange('extracting');
-
-    const caption = item.rawInput?.trim();
-    const result = await handlers.photoHandler(item.fileId, {
-      ...(caption ? { caption } : {}),
-      itemId,
-    });
-
-    return { handled: true, title: result.title, content: result.content, description: '', degradedReason: null };
+    const result = await handlers.socialMediaHandler(item.originalUrl, itemId);
+    return { handled: true, title: result.title, content: result.content, description: '' };
   }
 
   const isWebSource =
@@ -161,7 +103,6 @@ export async function dispatchIngestion(
       title: result.title,
       content: result.content,
       description: result.description || '',
-      degradedReason: null,
     };
   }
 
@@ -173,8 +114,8 @@ export async function dispatchIngestion(
     await onStatusChange('transcribing');
 
     const result = await handlers.audioTranscriptionHandler(item.fileId, item.fileSize);
-    return { handled: true, title: '', content: result.content, description: '', degradedReason: null };
+    return { handled: true, title: '', content: result.content, description: '' };
   }
 
-  return { handled: false, title: '', content: item.rawInput, description: '', degradedReason: null };
+  return { handled: false, title: '', content: item.rawInput, description: '' };
 }
