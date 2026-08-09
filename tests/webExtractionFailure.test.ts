@@ -65,6 +65,35 @@ describe('webExtractionHandler', () => {
     vi.unstubAllGlobals();
   });
 
+  it('lanza cuando Readability encuentra un <article> pero sin texto y no hay meta description', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respondWithHtml(
+        `<html><head><title>Artículo vacío</title></head><body><article><div class="ads"></div></article></body></html>`
+      )
+    );
+
+    await expect(webExtractionHandler('https://example.com/articulo-vacio')).rejects.toThrow();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('cuando el <article> no tiene texto pero sí hay meta description, esa description se devuelve como contenido', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respondWithHtml(
+        `<html><head><title>Artículo vacío</title><meta name="description" content="Una descripción corta de la página."></head><body><article><div class="ads"></div></article></body></html>`
+      )
+    );
+
+    const result = await webExtractionHandler('https://example.com/articulo-vacio-con-descripcion');
+
+    expect(result.description).toBe('Una descripción corta de la página.');
+    expect(result.content).toBe('Una descripción corta de la página.');
+
+    vi.unstubAllGlobals();
+  });
+
   it('un artículo legible se sigue devolviendo íntegro', async () => {
     const longPara = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(20);
     vi.stubGlobal(

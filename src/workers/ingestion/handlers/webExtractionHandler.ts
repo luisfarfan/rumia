@@ -36,25 +36,25 @@ export async function webExtractionHandler(url: string): Promise<WebExtractionRe
   // Extract readable article
   const reader = new Readability(doc);
   const article = reader.parse();
+  const trimmedDescription = description.trim();
+  const articleText = article?.textContent?.trim() ?? '';
 
-  if (!article) {
-    const trimmedDescription = description.trim();
-
+  if (!articleText) {
     if (!trimmedDescription) {
       throw new Error(`No readable article or meta description found for ${url}`);
     }
 
-    console.warn(`[WebExtraction] Readability returned null for ${url}. Falling back to meta description.`);
+    console.warn(`[WebExtraction] No readable article text for ${url}. Falling back to meta description.`);
     return {
-      title: doc.title || 'Untitled',
+      title: article?.title || doc.title || 'Untitled',
       description: trimmedDescription,
       content: trimmedDescription,
     };
   }
 
   return {
-    title: article.title || doc.title || 'Untitled',
-    description: description.trim(),
-    content: article.textContent ? article.textContent.trim() : '',
+    title: article?.title || doc.title || 'Untitled',
+    description: trimmedDescription,
+    content: articleText,
   };
 }
