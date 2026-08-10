@@ -10,16 +10,24 @@ rather than reimplementing the condition.
 - **THEN** the resolver delegates the processing to the web extraction handler
 
 #### Scenario: Dispatching Audio job
-- **WHEN** the worker processes a job with source type `audio` or `voice`
-- **THEN** the resolver delegates the processing to the audio transcription handler
+- **WHEN** the worker processes a job with source type `audio` or `voice`, whether or not the item also carries a URL parsed from its caption
+- **THEN** the resolver delegates the processing to the audio transcription handler, because the recording is the content
 
 #### Scenario: Dispatching media jobs
 - **WHEN** the worker processes a job with source type `youtube` or `tiktok`
 - **THEN** the resolver delegates to the social media handler as it did before
 
-#### Scenario: `photo` has no dedicated handler yet
-- **WHEN** the worker processes a job with source type `photo`
-- **THEN** the resolver reports the item as unhandled, same as before this change (out of scope: no photo handler exists in this codebase yet)
+#### Scenario: TikTok photo carousel
+- **WHEN** the social media handler rejects a TikTok URL as unsupported, which is how photo carousels present themselves
+- **THEN** the resolver falls back to the carousel handler, and only if that also fails does it fall back to page metadata, marking the item degraded
+
+#### Scenario: Dispatching a photo
+- **WHEN** the worker processes a job with source type `photo`, whether or not a URL was parsed out of its caption
+- **THEN** the resolver delegates to the photo handler, because the image is the content and a link in the caption must not divert the item to a web scrape
+
+#### Scenario: A handler reports degraded output
+- **WHEN** a handler completes but reports that part of the pipeline was unavailable
+- **THEN** the resolver returns that reason to its caller so a degraded item stays distinguishable from a complete one
 
 #### Scenario: No handler applies
 - **WHEN** no handler matches the item's source type

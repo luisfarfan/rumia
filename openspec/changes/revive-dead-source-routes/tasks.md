@@ -26,7 +26,10 @@ categoriza y se vectoriza.
   - Acceptance:
     - la elección de handler por ítem vive en una función exportada, invocable sin BullMQ ni Redis
     - un ítem con `detectedSource` `github`, `x` o `linkedin` y con URL se enruta a extracción web
-    - los ítems `youtube`, `tiktok`, `audio` y `voice` conservan el handler que ya usaban; `photo` no tenía handler dedicado antes de este cambio y sigue sin uno (fuera de alcance), cayendo en la rama no manejada
+    - los ítems `youtube`, `tiktok`, `photo`, `audio` y `voice` conservan el handler que ya usaban, incluido el fallback a carrusel de TikTok cuando yt-dlp rechaza la URL
+    - una foto cuyo caption contiene un enlace sigue yendo a su handler de imagen, no a extracción web
+    - un ítem `audio` o `voice` con enlace en el caption va a transcripción, no a extracción web
+    - el motivo de degradación que devuelve un handler llega intacto a quien llama
     - un ítem sin handler aplicable sigue cayendo a la rama no manejada, sin inventar contenido
     - el fuente de `src/workers/ingestion/worker.ts` ya no contiene la lista de tipos de fuente: la condición vive en un solo sitio
     - cuando un handler lanza, la función propaga el error en vez de convertirlo en contenido
