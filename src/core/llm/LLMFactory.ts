@@ -3,6 +3,7 @@ import { CLIProxyProvider } from './providers/CLIProxyProvider.js';
 import { OpenRouterProvider } from './providers/OpenRouterProvider.js';
 import { CodexProvider } from './providers/CodexProvider.js';
 import { AntigravityProvider } from './providers/AntigravityProvider.js';
+import { OllamaProvider } from './providers/OllamaProvider.js';
 
 export class LLMFactory {
   private static chatProviderInstance: LLMProvider | null = null;
@@ -19,6 +20,9 @@ export class LLMFactory {
       case 'antigravity':
         console.log('[LLMFactory] Instantiating AntigravityProvider');
         return new AntigravityProvider();
+      case 'ollama':
+        console.log('[LLMFactory] Instantiating OllamaProvider');
+        return new OllamaProvider();
       case 'cliproxyapi':
       default:
         console.log('[LLMFactory] Instantiating CLIProxyProvider (Default)');

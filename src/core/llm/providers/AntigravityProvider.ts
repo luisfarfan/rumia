@@ -1,32 +1,26 @@
-import type { LLMProvider, UsageMeta } from '../types.js';
+import type { LLMProvider } from '../types.js';
+
+const NOT_IMPLEMENTED =
+  'AntigravityProvider is not implemented. Select a different provider via CHAT_LLM_PROVIDER / EMBEDDING_LLM_PROVIDER.';
 
 /**
  * Placeholder stub for AntigravityProvider.
- * Implement when Antigravity API becomes available.
+ *
+ * Every method throws. It used to answer with mock completions and zero-filled
+ * vectors, which is worse than failing: mock text gets categorized, embedded and
+ * written into the graph, and a corpus of zero vectors makes every similarity
+ * search return the same arbitrary neighbours — both look like a working system.
  */
 export class AntigravityProvider implements LLMProvider {
-  async generateCompletion(
-    prompt: string,
-    options?: { modelTier?: 'flash' | 'pro' | 'vision' | 'thinking'; systemPrompt?: string; usageMeta?: UsageMeta; imagePaths?: string[] }
-  ): Promise<string> {
-    console.log('[AntigravityProvider] generateCompletion (Stub called)');
-    return `[Antigravity Mock Completion] for prompt: ${prompt}`;
+  async generateCompletion(): Promise<string> {
+    throw new Error(NOT_IMPLEMENTED);
   }
 
-  async generateStructured<T>(
-    prompt: string,
-    schema: any,
-    options?: { modelTier?: 'flash' | 'pro' | 'vision' | 'thinking'; systemPrompt?: string; schemaName: string; usageMeta?: UsageMeta }
-  ): Promise<T> {
-    console.log('[AntigravityProvider] generateStructured (Stub called)');
-    throw new Error('AntigravityProvider structured output is not implemented yet.');
+  async generateStructured<T>(): Promise<T> {
+    throw new Error(NOT_IMPLEMENTED);
   }
 
-  async generateEmbeddings(
-    texts: string[],
-    options?: { itemId?: string; usageMeta?: UsageMeta }
-  ): Promise<number[][]> {
-    console.log('[AntigravityProvider] generateEmbeddings (Stub called)');
-    return texts.map(() => new Array(1536).fill(0));
+  async generateEmbeddings(): Promise<number[][]> {
+    throw new Error(NOT_IMPLEMENTED);
   }
 }

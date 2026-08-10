@@ -2,12 +2,16 @@ import { OpenAI } from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import type { LLMProvider, UsageMeta } from '../types.js';
 import { TokenUsageRepo } from '../../../db/tokenUsageRepo.js';
+import { imageMimeType } from '../../../utils/media/imageMime.js';
+import { parseStructured, repairInstruction, structuredInstruction } from '../structuredOutput.js';
 import * as fs from 'fs';
 
 export class OpenRouterProvider implements LLMProvider {
   private openai: OpenAI;
   private flashModel: string;
   private proModel: string;
+  private visionModel: string;
+  private thinkingModel: string;
 
   constructor() {
     this.openai = new OpenAI({
@@ -20,12 +24,16 @@ export class OpenRouterProvider implements LLMProvider {
     });
     this.flashModel = process.env.OPENROUTER_FLASH_MODEL || 'openai/gpt-4o-mini';
     this.proModel = process.env.OPENROUTER_PRO_MODEL || 'openai/gpt-4o';
+    // Same rule as CLIProxyProvider: tiers come from config, never from a literal
+    // pinned in code. OpenRouter's catalogue is stable, so flash/pro keep defaults.
+    this.visionModel = process.env.OPENROUTER_VISION_MODEL || this.flashModel;
+    this.thinkingModel = process.env.OPENROUTER_THINKING_MODEL || this.proModel;
   }
 
   private getModel(tier?: 'flash' | 'pro' | 'vision' | 'thinking'): string {
     if (tier === 'pro') return this.proModel;
-    if (tier === 'vision') return 'openai/gpt-4o';
-    if (tier === 'thinking') return 'google/gemini-pro-1.5';
+    if (tier === 'vision') return this.visionModel;
+    if (tier === 'thinking') return this.thinkingModel;
     return this.flashModel;
   }
 
@@ -71,7 +79,7 @@ export class OpenRouterProvider implements LLMProvider {
           contentList.push({
             type: 'image_url',
             image_url: {
-              url: `data:image/jpeg;base64,${base64Image}`,
+              url: `data:${imageMimeType(imgPath)};base64,${base64Image}`,
             },
           });
         }
@@ -96,26 +104,46 @@ export class OpenRouterProvider implements LLMProvider {
     schema: any,
     options?: { modelTier?: 'flash' | 'pro' | 'vision' | 'thinking'; systemPrompt?: string; schemaName: string; usageMeta?: UsageMeta }
   ): Promise<T> {
+    const responseFormat = zodResponseFormat(schema, options?.schemaName || 'structured_output');
+
     const messages: any[] = [];
     if (options?.systemPrompt) {
       messages.push({ role: 'system', content: options.systemPrompt });
     }
-    messages.push({ role: 'user', content: prompt });
-
-    const response = await this.openai.chat.completions.create({
-      model: this.getModel(options?.modelTier),
-      messages,
-      response_format: zodResponseFormat(schema, options?.schemaName || 'structured_output'),
+    // Same belt-and-braces as CLIProxyProvider: OpenRouter routes to many models
+    // and not all of them honour `response_format`.
+    messages.push({
+      role: 'user',
+      content: `${prompt}\n\n${structuredInstruction(responseFormat.json_schema?.schema)}`,
     });
 
-    this.recordUsage(options?.usageMeta, response.model, response.usage);
+    const ask = async (turns: any[]): Promise<string> => {
+      const response = await this.openai.chat.completions.create({
+        model: this.getModel(options?.modelTier),
+        messages: turns,
+        response_format: responseFormat,
+      });
+      this.recordUsage(options?.usageMeta, response.model, response.usage);
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Failed to retrieve structured content from OpenRouter');
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('Failed to retrieve structured content from OpenRouter');
+      }
+      return content;
+    };
+
+    const first = await ask(messages);
+    try {
+      return parseStructured<T>(first, schema);
+    } catch (err) {
+      console.warn('[OpenRouterProvider] Structured output unusable, retrying once:', err);
+      const repaired = await ask([
+        ...messages,
+        { role: 'assistant', content: first },
+        { role: 'user', content: repairInstruction(err) },
+      ]);
+      return parseStructured<T>(repaired, schema);
     }
-
-    return JSON.parse(content) as T;
   }
 
   async generateEmbeddings(

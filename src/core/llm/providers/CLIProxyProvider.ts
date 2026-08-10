@@ -2,26 +2,47 @@ import { OpenAI } from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import type { LLMProvider, UsageMeta } from '../types.js';
 import { TokenUsageRepo } from '../../../db/tokenUsageRepo.js';
+import { imageMimeType } from '../../../utils/media/imageMime.js';
+import { parseStructured, repairInstruction, structuredInstruction } from '../structuredOutput.js';
 import * as fs from 'fs';
 
 export class CLIProxyProvider implements LLMProvider {
   private openai: OpenAI;
   private flashModel: string;
   private proModel: string;
+  private visionModel: string;
+  private thinkingModel: string;
 
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.CLIPROXY_API_KEY || process.env.OPENAI_API_KEY || 'dummy-key',
       baseURL: process.env.CLIPROXY_BASE_URL || undefined,
     });
-    this.flashModel = process.env.CLIPROXY_FLASH_MODEL || 'gpt-4o-mini';
-    this.proModel = process.env.CLIPROXY_PRO_MODEL || 'gpt-4o';
+
+    // A proxy serves whatever model set its own credentials expose, so there is no
+    // safe literal to fall back to: a hard-coded name the proxy does not serve fails
+    // at call time with a 502 that reads like an outage. Demand the config instead.
+    const flash = process.env.CLIPROXY_FLASH_MODEL;
+    const pro = process.env.CLIPROXY_PRO_MODEL;
+    if (!flash || !pro) {
+      throw new Error(
+        'CLIProxyProvider requires CLIPROXY_FLASH_MODEL and CLIPROXY_PRO_MODEL. ' +
+          'Check which models your proxy serves with: GET ${CLIPROXY_BASE_URL}/models'
+      );
+    }
+
+    this.flashModel = flash;
+    this.proModel = pro;
+    // Vision and thinking are optional: when unset they reuse a tier that is known
+    // to be configured rather than inventing a model name.
+    this.visionModel = process.env.CLIPROXY_VISION_MODEL || flash;
+    this.thinkingModel = process.env.CLIPROXY_THINKING_MODEL || pro;
   }
 
   private getModel(tier?: 'flash' | 'pro' | 'vision' | 'thinking'): string {
     if (tier === 'pro') return this.proModel;
-    if (tier === 'vision') return 'gpt-4o';
-    if (tier === 'thinking') return 'o1-mini';
+    if (tier === 'vision') return this.visionModel;
+    if (tier === 'thinking') return this.thinkingModel;
     return this.flashModel;
   }
 
@@ -67,7 +88,7 @@ export class CLIProxyProvider implements LLMProvider {
           contentList.push({
             type: 'image_url',
             image_url: {
-              url: `data:image/jpeg;base64,${base64Image}`,
+              url: `data:${imageMimeType(imgPath)};base64,${base64Image}`,
             },
           });
         }
@@ -92,26 +113,49 @@ export class CLIProxyProvider implements LLMProvider {
     schema: any,
     options?: { modelTier?: 'flash' | 'pro' | 'vision' | 'thinking'; systemPrompt?: string; schemaName: string; usageMeta?: UsageMeta }
   ): Promise<T> {
+    const responseFormat = zodResponseFormat(schema, options?.schemaName || 'structured_output');
+
     const messages: any[] = [];
     if (options?.systemPrompt) {
       messages.push({ role: 'system', content: options.systemPrompt });
     }
-    messages.push({ role: 'user', content: prompt });
-
-    const response = await this.openai.chat.completions.create({
-      model: this.getModel(options?.modelTier),
-      messages,
-      response_format: zodResponseFormat(schema, options?.schemaName || 'structured_output'),
+    // The proxy accepts `response_format` and then answers in Markdown anyway, so
+    // the instruction has to live in the prompt too. Both are sent: providers that
+    // honour the response format still get it.
+    messages.push({
+      role: 'user',
+      content: `${prompt}\n\n${structuredInstruction(responseFormat.json_schema?.schema)}`,
     });
 
-    this.recordUsage(options?.usageMeta, response.model, response.usage);
+    const ask = async (turns: any[]): Promise<string> => {
+      const response = await this.openai.chat.completions.create({
+        model: this.getModel(options?.modelTier),
+        messages: turns,
+        response_format: responseFormat,
+      });
+      this.recordUsage(options?.usageMeta, response.model, response.usage);
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Failed to retrieve structured content from provider');
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('Failed to retrieve structured content from provider');
+      }
+      return content;
+    };
+
+    const first = await ask(messages);
+    try {
+      return parseStructured<T>(first, schema);
+    } catch (err) {
+      console.warn('[CLIProxyProvider] Structured output unusable, retrying once:', err);
+      // One repair turn. If it still fails, throw — never hand back an
+      // unvalidated object typed as if it had been checked.
+      const repaired = await ask([
+        ...messages,
+        { role: 'assistant', content: first },
+        { role: 'user', content: repairInstruction(err) },
+      ]);
+      return parseStructured<T>(repaired, schema);
     }
-
-    return JSON.parse(content) as T;
   }
 
   async generateEmbeddings(
