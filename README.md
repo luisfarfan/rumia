@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛰️ Autodiscovery Wiki
+# 🐄 Rumia
 
 **Mandas un enlace por Telegram. Vuelve convertido en conocimiento.**
 
@@ -8,9 +8,12 @@ Captura, entiende, verifica y conecta todo lo que consumes en internet —
 vídeos, carruseles, imágenes, artículos, audios— en una base de conocimiento
 personal que puedes preguntar en lenguaje natural.
 
+<sub>*rumiar*: masticar de nuevo lo que ya se tragó.<br/>
+Tú consumes rápido en el scroll; esto lo procesa despacio hasta dejar algo aprovechable.</sub>
+
 </div>
 
-![Dashboard de Autodiscovery Wiki](docs/dashboard.png)
+![Dashboard de Rumia](docs/dashboard.png)
 
 ---
 
@@ -141,7 +144,7 @@ relacionado. Whisper transcribe español, inglés y frases que mezclan ambos
 API de OpenAI.
 
 ```bash
-git clone <este-repo> && cd autodiscovery-wiki
+git clone <este-repo> && cd rumia
 npm install
 cp .env.example .env      # y rellena las credenciales
 docker compose up -d      # PostgreSQL + Redis

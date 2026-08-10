@@ -18,8 +18,8 @@ export class OpenRouterProvider implements LLMProvider {
       apiKey: process.env.OPENROUTER_API_KEY || 'dummy-key',
       baseURL: 'https://openrouter.ai/api/v1',
       defaultHeaders: {
-        'HTTP-Referer': 'https://autodiscovery-wiki.local',
-        'X-Title': 'Autodiscovery Wiki',
+        'HTTP-Referer': 'https://rumia.local',
+        'X-Title': 'Rumia',
       },
     });
     this.flashModel = process.env.OPENROUTER_FLASH_MODEL || 'openai/gpt-4o-mini';

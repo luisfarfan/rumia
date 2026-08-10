@@ -97,7 +97,7 @@ async function synthesizeKnowledge(state: typeof IngestionAgentState.State) {
   console.log('[IngestionAgent] Node: synthesizeKnowledge');
 
   const systemPrompt = `You are an expert technical writer and knowledge base synthesizer.
-Your goal is to write a highly detailed, comprehensive, and beautiful Markdown document for an autodiscovery knowledge wiki.
+Your goal is to write a highly detailed, comprehensive, and beautiful Markdown document for a personal knowledge wiki.
 Combine the audio transcript and the visual timeline analysis into a single, cohesive, self-contained wiki page.
 Include sections like Introduction, Key Concepts, Visual Walkthrough, Summary, and Key Takeaways.`;
 

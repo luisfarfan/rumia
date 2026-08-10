@@ -1,4 +1,4 @@
-# Backlog — AutoDiscovery Wiki
+# Backlog — Rumia
 
 Estado del backlog tras la auditoría de capacidades del 2026-08-08.
 Cada ítem indica si **la solución ya está decidida** o si primero hace falta un spike de investigación.
@@ -54,7 +54,7 @@ de visión marque el item como degradado en vez de tragárselo.
 
 ### ~~B13. El proxy no expone `/v1/embeddings` → toda la fase RAG está rota~~ ✅ HECHO (2026-08-08)
 [OllamaProvider.ts](src/core/llm/providers/OllamaProvider.ts) nuevo, registrado en el factory
-como `ollama`; `EMBEDDING_LLM_PROVIDER=ollama` contra `bge-m3` en `ubuntu-lan`. Esquema migrado
+como `ollama`; `EMBEDDING_LLM_PROVIDER=ollama` contra `bge-m3` en la laptop de la LAN. Esquema migrado
 a `vector(1024)` en `item_chunks` y `nodes`. `CodexProvider` y `AntigravityProvider` dejaron de
 devolver vectores de ceros: ahora lanzan.
 **Verificado con la cadena real, no solo con mocks:** `EmbeddingService` → Ollama → Postgres
@@ -78,11 +78,11 @@ El endpoint **no existe** en cliproxyapi, y ninguno de los 35 modelos servidos e
 (son todos de chat/imagen/video). Con `EMBEDDING_LLM_PROVIDER=cliproxyapi`, la cola de embedding
 falla entera → sin chunks vectorizados → **`/ask`, la búsqueda semántica y el RAG no funcionan**.
 Hallazgo nuevo, no detectado en la auditoría inicial.
-**Solución encontrada (2026-08-08):** la laptop Ubuntu de la LAN (`ubuntu-lan` → 192.168.1.12)
+**Solución encontrada (2026-08-08):** una laptop Ubuntu en la LAN
 corre **Ollama con `nomic-embed-text` ya instalado**, expuesto en `0.0.0.0:11434` y alcanzable
 desde el Mac. Su endpoint OpenAI-compatible responde:
 ```
-POST http://192.168.1.12:11434/v1/embeddings {"model":"nomic-embed-text"}  → 200, 768 dims
+POST http://LAPTOP_LAN:11434/v1/embeddings {"model":"nomic-embed-text"}  → 200, 768 dims
 ```
 **Bloqueador:** `schema.sql` declara `vector(1536)` en `item_chunks.embedding` (línea 37) y en
 los nodos del grafo (línea 51) — dimensión de `text-embedding-3-small`. `nomic-embed-text`
@@ -113,7 +113,7 @@ embedding funcione. Evaluar si eso es aceptable o si conviene un fallback.
 </details>
 
 ### ~~B3. La transcripción de audio está en modo mock~~ ✅ HECHO (2026-08-09)
-**faster-whisper `large-v3` cuantizado a int8_float16** en `ubuntu-lan`, servido por un endpoint
+**faster-whisper `large-v3` cuantizado a int8_float16** en la laptop de la LAN, servido por un endpoint
 compatible con la API de OpenAI en `:9000` (`~/whisper-server/`, arranca con `run.sh`). La
 cuantización es lo que lo hace caber: fp16 pide ~10GB y la RTX 3060 Laptop tiene 6.
 **Medido con verdad conocida**, no asumido:
