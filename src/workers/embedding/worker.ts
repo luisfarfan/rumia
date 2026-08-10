@@ -18,10 +18,13 @@ export const worker = new Worker(
     // Run chunking and embedding
     await embeddingHandler(itemId);
 
-    // Update status to chunked_and_embedded
+    // Update status to chunked_and_embedded.
+    // Deliberately does NOT touch `error`: the ingestion worker stores the
+    // degradation reason there (e.g. "audio transcription unavailable"), and
+    // clearing it here erased the only record that an item was ingested with a
+    // piece of the pipeline missing.
     await CapturedItemsRepo.update(itemId, {
       status: 'chunked_and_embedded',
-      error: null,
     });
     console.log(`[EmbeddingWorker] Item ${itemId} successfully chunked and embedded.`);
 

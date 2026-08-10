@@ -36,6 +36,9 @@ export const worker = new Worker(
     const finalContent = dispatchResult.content;
 
     if (dispatchResult.handled) {
+      if (dispatchResult.degradedReason) {
+        console.warn(`[Worker] Item ${itemId} ingested DEGRADED: ${dispatchResult.degradedReason}`);
+      }
       console.log(`[Worker] Item ${itemId} processed successfully (source: ${item.detectedSource || 'text'})`);
     } else {
       console.log(`[Worker] Item ${itemId} has unhandled source type: "${item.detectedSource || 'text'}". Skipping processing.`);
@@ -81,7 +84,9 @@ export const worker = new Worker(
       content: finalContent || undefined,
       category,
       tags,
-      error: null,
+      // Keeps a degraded ingestion distinguishable from a complete one in the DB
+      // and the dashboard, instead of both looking equally successful.
+      error: dispatchResult.degradedReason,
     });
 
     // Enqueue job in embeddingQueue for Phase 3 (chunking and embedding)

@@ -5,6 +5,10 @@ import { runIngestionAgent } from '../../../agents/ingestionAgent.js';
 interface SocialMediaHandlerResult {
   title: string;
   content: string;
+  /** True when the visual analysis failed, so the entry is text-only. */
+  visualAnalysisFailed: boolean;
+  /** True when speech could not be transcribed, so the entry is visual-only. */
+  transcriptionFailed: boolean;
 }
 
 /**

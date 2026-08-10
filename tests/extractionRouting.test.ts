@@ -18,17 +18,24 @@ function fakeHandlers(overrides: Partial<IngestionHandlers> = {}): IngestionHand
   return {
     webExtractionHandler: vi.fn(async () => ({ title: 'web title', description: 'web desc', content: 'web content' })),
     audioTranscriptionHandler: vi.fn(async () => ({ content: 'audio content' })),
-    socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false })),
+    socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false, transcriptionFailed: false })),
+    photoHandler: vi.fn(async () => ({ title: 'photo title', content: 'photo content' })),
+    tiktokCarouselHandler: vi.fn(async () => ({ title: 'carousel title', content: 'carousel content' })),
+    metaPostHandler: vi.fn(async () => ({ title: 'meta title', content: 'meta content', visualAnalysisFailed: false })),
     ...overrides,
   };
 }
 
-describe('dispatchIngestion', () => {
-  it('es invocable sin BullMQ ni Redis: ninguna de sus dependencias importa esos módulos', async () => {
-    const mod = await import('../src/workers/ingestion/dispatchIngestion.js');
-    expect(typeof mod.dispatchIngestion).toBe('function');
+/** yt-dlp reports a photo carousel as an unsupported URL, and puts the reason on
+ *  `stderr` rather than `message` — mirrored here so the fixture cannot pass by
+ *  matching a shape the real tool never produces. */
+function unsupportedUrlError(): Error & { stderr: string } {
+  return Object.assign(new Error('Command failed with exit code 1'), {
+    stderr: 'ERROR: Unsupported URL: https://www.tiktok.com/@x/photo/1',
   });
+}
 
+describe('dispatchIngestion', () => {
   it('la sola importación no depende de TELEGRAM_BOT_TOKEN ni de Redis: sobrevive en un proceso hijo con env vacío y sin .env', () => {
     // Real isolation check: importing dispatchIngestion.js must not transitively
     // load a module with a load-time side effect that needs these vars (e.g. the
@@ -79,6 +86,7 @@ describe('dispatchIngestion', () => {
         title: 'web title',
         content: 'web content',
         description: 'web desc',
+        degradedReason: null,
       });
     }
   );
@@ -111,20 +119,120 @@ describe('dispatchIngestion', () => {
     expect(result.handled).toBe(true);
   });
 
-  it('photo no tiene handler dedicado todavía y cae en la rama no manejada', async () => {
+  it('photo se enruta a su propio handler, con el caption como contexto', async () => {
     const handlers = fakeHandlers();
 
     const result = await dispatchIngestion(
-      { detectedSource: 'photo', fileId: 'file-1', rawInput: 'una nota' },
+      { detectedSource: 'photo', fileId: 'file-1', rawInput: 'diagrama de arquitectura' },
       'item-4',
       { handlers }
     );
 
-    expect(result.handled).toBe(false);
-    expect(result.content).toBe('una nota');
+    expect(handlers.photoHandler).toHaveBeenCalledWith('file-1', {
+      caption: 'diagrama de arquitectura',
+      itemId: 'item-4',
+    });
+    expect(result.handled).toBe(true);
+    expect(result.content).toBe('photo content');
+  });
+
+  it('una foto cuyo caption trae un enlace sigue yendo a photo, no a extracción web', async () => {
+    // La imagen ES el contenido: un enlace que caiga en el caption no debe desviar
+    // el ítem a raspar una página. `telegramCaptureService` extrae URLs del caption,
+    // así que este caso es alcanzable en producción.
+    const handlers = fakeHandlers();
+
+    await dispatchIngestion(
+      {
+        detectedSource: 'photo',
+        fileId: 'file-1',
+        originalUrl: 'https://example.com/en-el-caption',
+        rawInput: 'mira https://example.com/en-el-caption',
+      },
+      'item-4b',
+      { handlers }
+    );
+
+    expect(handlers.photoHandler).toHaveBeenCalled();
     expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
-    expect(handlers.socialMediaHandler).not.toHaveBeenCalled();
-    expect(handlers.audioTranscriptionHandler).not.toHaveBeenCalled();
+  });
+
+  it('un carrusel de tiktok (yt-dlp lo rechaza) cae al handler de carrusel, no a extracción web', async () => {
+    const handlers = fakeHandlers({
+      socialMediaHandler: vi.fn(async () => {
+        throw unsupportedUrlError();
+      }),
+    });
+
+    const result = await dispatchIngestion(
+      { detectedSource: 'tiktok', originalUrl: 'https://www.tiktok.com/@x/photo/1', rawInput: 'raw' },
+      'item-4c',
+      { handlers }
+    );
+
+    expect(handlers.tiktokCarouselHandler).toHaveBeenCalledWith('https://www.tiktok.com/@x/photo/1', 'item-4c');
+    expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
+    expect(result.content).toBe('carousel content');
+    expect(result.degradedReason).toBeNull();
+  });
+
+  it('si el carrusel también falla, cae a extracción web y queda marcado como degradado', async () => {
+    const handlers = fakeHandlers({
+      socialMediaHandler: vi.fn(async () => {
+        throw unsupportedUrlError();
+      }),
+      tiktokCarouselHandler: vi.fn(async () => {
+        throw new Error('rate limited');
+      }),
+    });
+
+    const result = await dispatchIngestion(
+      { detectedSource: 'tiktok', originalUrl: 'https://www.tiktok.com/@x/photo/1', rawInput: 'raw' },
+      'item-4d',
+      { handlers }
+    );
+
+    expect(handlers.webExtractionHandler).toHaveBeenCalled();
+    expect(result.degradedReason).toMatch(/carousel unavailable/);
+  });
+
+  it('un fallo de social media que NO sea "Unsupported URL" se propaga sin intentar el carrusel', async () => {
+    const boom = new Error('la red se cayó');
+    const handlers = fakeHandlers({
+      socialMediaHandler: vi.fn(async () => {
+        throw boom;
+      }),
+    });
+
+    await expect(
+      dispatchIngestion(
+        { detectedSource: 'tiktok', originalUrl: 'https://www.tiktok.com/@x/video/1', rawInput: 'raw' },
+        'item-4e',
+        { handlers }
+      )
+    ).rejects.toThrow(boom);
+    expect(handlers.tiktokCarouselHandler).not.toHaveBeenCalled();
+    expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
+  });
+
+  it('cuando el análisis visual falla, el resultado queda marcado como degradado', async () => {
+    const handlers = fakeHandlers({
+      socialMediaHandler: vi.fn(async () => ({
+        title: 'social title',
+        content: 'solo transcripción',
+        visualAnalysisFailed: true,
+        transcriptionFailed: false,
+      })),
+    });
+
+    const result = await dispatchIngestion(
+      { detectedSource: 'youtube', originalUrl: 'https://youtube.com/watch?v=1', rawInput: 'raw' },
+      'item-4f',
+      { handlers }
+    );
+
+    expect(result.degradedReason).toMatch(/visual analysis unavailable/);
+    expect(result.content).toBe('solo transcripción');
   });
 
   it.each(['audio', 'voice'])('%s conserva el audio transcription handler', async (detectedSource) => {
@@ -141,7 +249,38 @@ describe('dispatchIngestion', () => {
     expect(result.content).toBe('audio content');
   });
 
-  it.each(['instagram', 'reddit'])(
+  it.each(['instagram', 'facebook'])(
+    'un ítem %s se enruta al handler de posts de Meta',
+    async (detectedSource) => {
+      const handlers = fakeHandlers();
+
+      const result = await dispatchIngestion(
+        { detectedSource, originalUrl: 'https://www.instagram.com/p/ABC/', rawInput: 'raw' },
+        'item-meta',
+        { handlers }
+      );
+
+      expect(handlers.metaPostHandler).toHaveBeenCalledWith('https://www.instagram.com/p/ABC/', 'item-meta');
+      expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
+      expect(result.content).toBe('meta content');
+    }
+  );
+
+  it('un post de Meta con la imagen ilegible queda marcado como degradado', async () => {
+    const handlers = fakeHandlers({
+      metaPostHandler: vi.fn(async () => ({ title: 't', content: 'solo caption', visualAnalysisFailed: true })),
+    });
+
+    const result = await dispatchIngestion(
+      { detectedSource: 'instagram', originalUrl: 'https://www.instagram.com/p/ABC/', rawInput: 'raw' },
+      'item-meta-2',
+      { handlers }
+    );
+
+    expect(result.degradedReason).toMatch(/image unreadable/);
+  });
+
+  it.each(['reddit', 'pdf'])(
     'un ítem sin handler aplicable (%s, fuera de alcance) cae en la rama no manejada sin inventar contenido',
     async (detectedSource) => {
       const handlers = fakeHandlers();
@@ -159,6 +298,18 @@ describe('dispatchIngestion', () => {
       expect(handlers.audioTranscriptionHandler).not.toHaveBeenCalled();
     }
   );
+
+  it('la lista de tipos de fuente no reaparece en worker.ts: la condición vive en un solo sitio', () => {
+    // Guard simétrico al de tests/webExtractionFailure.test.ts. Hoy es cierto por
+    // construcción, pero nada impedía que la condición volviera a duplicarse.
+    const workerSource = fs.readFileSync('src/workers/ingestion/worker.ts', 'utf8');
+
+    for (const sourceType of ['youtube', 'tiktok', 'linkedin', 'instagram', 'voice']) {
+      expect(workerSource, `worker.ts volvió a mencionar "${sourceType}"`).not.toContain(
+        `'${sourceType}'`
+      );
+    }
+  });
 
   it('un tipo desconocido sin handler cae en la rama no manejada', async () => {
     const handlers = fakeHandlers();

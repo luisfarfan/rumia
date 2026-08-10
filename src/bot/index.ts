@@ -1,19 +1,10 @@
-import { Bot } from 'grammy';
+import { bot } from './client.js';
 import { TelegramCaptureService } from './telegramCaptureService.js';
 import { RagService } from '../services/ragService.js';
 import { CapturedItemsRepo } from '../db/capturedItemsRepo.js';
 import { runFactCheckerAgent } from '../agents/factCheckerAgent.js';
-import * as dotenv from 'dotenv';
 
-dotenv.config();
-
-const token = process.env.TELEGRAM_BOT_TOKEN;
-if (!token) {
-  console.error('CRITICAL: TELEGRAM_BOT_TOKEN is not defined in environment variables.');
-  process.exit(1);
-}
-
-export const bot = new Bot(token);
+export { bot };
 
 // Helper for sending HTML responses
 async function replySuccess(ctx: any, item: any, provider: string) {
@@ -67,7 +58,34 @@ bot.on('message:document', async (ctx) => {
   }
 });
 
-// 3. Listen for Audio Messages
+// 3. Listen for Photos (read with the vision tier, which also transcribes text)
+bot.on('message:photo', async (ctx) => {
+  try {
+    // Telegram sends every rendition, smallest first; the last is the largest.
+    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+    if (!photo) throw new Error('Photo message arrived without any rendition.');
+
+    const item = await TelegramCaptureService.capture({
+      telegramUserId: ctx.from.id,
+      chatId: ctx.chat.id,
+      messageId: ctx.message.message_id,
+      text: ctx.message.caption,
+      file: {
+        fileId: photo.file_id,
+        mimeType: 'image/jpeg',
+        fileSize: photo.file_size,
+      },
+      detectedSource: 'photo',
+    });
+
+    await replySuccess(ctx, item, 'imagen');
+  } catch (error) {
+    console.error('Error processing photo message:', error);
+    await ctx.reply('❌ Hubo un error al registrar la imagen.');
+  }
+});
+
+// 4. Listen for Audio Messages
 bot.on('message:audio', async (ctx) => {
   try {
     const audio = ctx.message.audio;
@@ -222,10 +240,8 @@ bot.command('verify', async (ctx) => {
 });
 
 // Start bot if run directly
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
-  bot.start().then(() => {
-    console.log('Telegram Capture Bot is running...');
-  }).catch((err) => {
-    console.error('Failed to start Telegram Bot:', err);
-  });
-}
+bot.start().then(() => {
+  console.log('Telegram Capture Bot is running...');
+}).catch((err) => {
+  console.error('Failed to start Telegram Bot:', err);
+});

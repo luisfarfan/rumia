@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { bot } from '../../../bot/index.js';
+import { bot } from '../../../bot/client.js';
 
 interface AudioTranscriptionResult {
   content: string;
@@ -83,39 +83,51 @@ export async function audioTranscriptionHandler(
 }
 
 /**
- * Helper to call Whisper API or fallback to mock transcription.
+ * Sends audio to an OpenAI-compatible transcription endpoint.
+ *
+ * There is deliberately no mock fallback. The previous version returned
+ * "[Transcripción Mock de Audio]" whenever no API key was configured, and that
+ * placeholder was stored as content, categorized, embedded and pushed into the
+ * graph — every spoken item looked ingested while carrying nothing. A missing or
+ * unreachable transcriber must fail loudly instead.
  */
 async function executeTranscription(buffer: Buffer, ext: string): Promise<AudioTranscriptionResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey) {
-    console.log('[AudioTranscription] Sending audio buffer to Whisper API...');
-    
-    const formData = new FormData();
-    const blob = new Blob([buffer as any], { type: 'audio/mpeg' });
-    formData.append('file', blob, `audio${ext}`);
-    formData.append('model', 'whisper-1');
-
-    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    if (!whisperResponse.ok) {
-      const errorText = await whisperResponse.text();
-      throw new Error(`Whisper API transcription failed: status ${whisperResponse.status} - ${errorText}`);
-    }
-
-    const result = (await whisperResponse.json()) as { text: string };
-    console.log('[AudioTranscription] Transcription succeeded via Whisper.');
-    return { content: result.text.trim() };
-  } else {
-    console.log('[AudioTranscription] No OPENAI_API_KEY found. Using mock transcription.');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return {
-      content: `[Transcripción Mock de Audio - Extensión: ${ext}]`,
-    };
+  const baseUrl = process.env.WHISPER_BASE_URL;
+  if (!baseUrl) {
+    throw new Error(
+      'WHISPER_BASE_URL is not configured, so audio cannot be transcribed. ' +
+        'Point it at an OpenAI-compatible transcription endpoint (see .env.example).'
+    );
   }
+
+  const model = process.env.WHISPER_MODEL || 'large-v3';
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
+
+  console.log(`[AudioTranscription] Sending audio to ${endpoint} (model: ${model})...`);
+
+  const formData = new FormData();
+  formData.append('file', new Blob([buffer as any], { type: 'audio/mpeg' }), `audio${ext}`);
+  formData.append('model', model);
+  // No `language` field on purpose: forcing one degrades the other, and this
+  // corpus mixes Spanish and English inside single sentences.
+
+  const headers: Record<string, string> = {};
+  const apiKey = process.env.WHISPER_API_KEY;
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  const response = await fetch(endpoint, { method: 'POST', headers, body: formData });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Transcription failed: status ${response.status} - ${detail}`.trim());
+  }
+
+  const result = (await response.json()) as { text?: string; language?: string };
+  const text = (result.text ?? '').trim();
+  if (!text) {
+    throw new Error('Transcription returned no text: refusing to store an empty transcript as content.');
+  }
+
+  console.log(`[AudioTranscription] Transcribed ${text.length} chars (language: ${result.language ?? 'auto'}).`);
+  return { content: text };
 }

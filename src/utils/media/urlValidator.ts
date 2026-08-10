@@ -5,7 +5,7 @@
 export function validateSocialMediaUrl(url: string): boolean {
   // Whitelist pattern: must start with https://, be from youtube/youtu.be/tiktok,
   // and contain only safe alphanumeric and standard URL characters (including @ and %).
-  const safePattern = /^https:\/\/(www\.)?(youtube\.com|youtu\.be|tiktok\.com)\/[a-zA-Z0-9_?=&/.-@%]+$/i;
+  const safePattern = /^https:\/\/(?:[a-zA-Z0-9-]+\.)*(?:youtube\.com|youtu\.be|tiktok\.com)\/[a-zA-Z0-9_?=&/.-@%]+$/i;
   if (!safePattern.test(url)) {
     return false;
   }

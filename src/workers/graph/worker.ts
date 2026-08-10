@@ -27,8 +27,9 @@ export const worker = new Worker(
 
     // Task 3.3: Update item status to graph_extracted upon success
     await CapturedItemsRepo.update(itemId, {
+      // Same rule as the embedding worker: `error` carries the ingestion
+      // degradation reason, so a later stage must not clear it on success.
       status: 'graph_extracted',
-      error: null,
     });
     console.log(`[GraphWorker] Item ${itemId} successfully extracted to Knowledge Graph.`);
   },
