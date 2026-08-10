@@ -15,6 +15,33 @@ export interface RagResult {
   sources: RagSource[];
 }
 
+/**
+ * Shapes of the rows each SQL query below returns. Declared as type aliases (not
+ * interfaces) so they satisfy pg's `QueryResultRow` index-signature constraint.
+ */
+type ChunkRow = {
+  content: string;
+  chunkIndex: number;
+  itemId: string;
+  originalUrl: string | null;
+  itemTitle: string | null;
+  rawInput: string | null;
+};
+
+type NodeRow = {
+  id: string;
+  name: string;
+  label: string;
+};
+
+type EdgeRow = {
+  sourceName: string;
+  sourceLabel: string;
+  relationship: string;
+  targetName: string;
+  targetLabel: string;
+};
+
 export class RagService {
   /**
    * Performs Hybrid RAG (Vector Search on Chunks + Neighbor Traversal in Graph)
@@ -47,7 +74,7 @@ export class RagService {
       ORDER BY ic.embedding <=> $1::vector ASC
       LIMIT 5;
     `;
-    const chunksResult = await pool.query(chunksQuery, [vectorStr]);
+    const chunksResult = await pool.query<ChunkRow>(chunksQuery, [vectorStr]);
     const retrievedChunks = chunksResult.rows;
 
     if (retrievedChunks.length === 0) {
@@ -77,7 +104,7 @@ export class RagService {
     
     // We fetch all nodes from DB to find matches in our text chunks
     const allNodesQuery = 'SELECT id, name, label FROM nodes;';
-    const allNodesResult = await pool.query(allNodesQuery);
+    const allNodesResult = await pool.query<NodeRow>(allNodesQuery);
     const allNodes = allNodesResult.rows;
 
     const matchedNodeIds: string[] = [];
@@ -110,7 +137,7 @@ export class RagService {
         WHERE e.source_node = ANY($1) OR e.target_node = ANY($1)
         LIMIT 20;
       `;
-      const edgesResult = await pool.query(edgesQuery, [matchedNodeIds]);
+      const edgesResult = await pool.query<EdgeRow>(edgesQuery, [matchedNodeIds]);
       const relations = edgesResult.rows;
 
       if (relations.length > 0) {

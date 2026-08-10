@@ -2,3 +2,17 @@ node_modules/
 dist/
 .env
 openspec/config.yaml
+
+# Local state written by the retrieval tools rein provisions: machine-specific, regenerated, never committed.
+.serena/
+graphify-out/
+.codegraph/
+
+# Secretos y copias locales: .env ya está arriba, pero sus variantes también salen.
+.env.*
+!.env.example
+frontend/.env*
+!frontend/.env.example
+
+# Scratch de exploración: útil en local, ruido en el repo.
+scratch_*.ts
