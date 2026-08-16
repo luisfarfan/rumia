@@ -205,7 +205,16 @@ reintento con backoff antes de rendirse.
 
 ## P1 — Rutas muertas y capacidades base
 
-### B4. Instagram, X, LinkedIn, Reddit, GitHub y PDFs-por-URL no se procesan 🟡
+### ~~B4. Instagram, X, LinkedIn, Reddit, GitHub y PDFs-por-URL no se procesan~~ ✅ HECHO (2026-08-16)
+El enrutado ya no es una lista de tipos repartida por el worker: [src/core/sources.ts](src/core/sources.ts)
+declara cada plataforma y su **estrategia de lectura** (`media` / `post` / `web` / `none`), y
+tanto la captura como el dispatcher leen de ahí. Añadir una red es una línea en un archivo.
+Cobertura verificada pidiendo `og:` a cada host, sin sesión: **Instagram, Facebook, Threads,
+Bluesky, Mastodon, X, Pinterest y Tumblr** responden con contenido; **Vimeo, Twitch, Dailymotion
+y SoundCloud** entran por yt-dlp. Reddit es el único sin ruta, y lo dice en su propia tarjeta.
+Cubierto por [tests/sources.test.ts](tests/sources.test.ts) (45 casos).
+
+<details><summary>Diagnóstico original</summary>
 **Archivo:** [src/workers/ingestion/worker.ts:64](src/workers/ingestion/worker.ts)
 `detectSource` los etiqueta correctamente ([telegramCaptureService.ts:29](src/bot/telegramCaptureService.ts))
 pero la condición de la rama web los excluye explícitamente y no existe rama propia para ellos
@@ -214,6 +223,7 @@ Facebook ni siquiera está en `detectSource`.
 **Solución conocida para el routing:** X, Reddit y GitHub tienen HTML servible; basta con
 sacarlos de la lista de exclusión para que pasen por Readability. Lo que hay *detrás* de la
 rama de Instagram y Facebook es otro problema (ver B8).
+</details>
 
 ### ~~B5. Las imágenes no se capturan en absoluto — no hay OCR~~ ✅ HECHO (2026-08-08)
 `bot.on('message:photo')` toma la rendición más grande que envía Telegram y la encola;
@@ -245,12 +255,18 @@ tarjetas con badges de fuente/categoría/estado de pipeline, filtros por categor
 panel de detalle con texto extraído completo, sección de fact-checking con fuentes de Tavily, y
 el Graph Explorer con su grafo force-directed. El carrusel de TikTok se ve con su transcripción.
 
-### B17. Arrancar el sistema requiere 5 procesos a mano 🟢
+### B17. Arrancar el sistema requiere 5 procesos a mano 🟢 (parcial)
+**Whisper ya no cuenta:** corre como servicio de systemd con `Linger=yes`, así que sobrevive a
+reinicios y a cerrar sesión. Comprobado forzando un `systemctl restart` y viendo que vuelve solo.
+Quedan bot, tres workers y el dashboard.
+
+<details><summary>Diagnóstico original</summary>
 `npm start` (bot), `npm run worker`, `worker:embedding`, `worker:graph`, y `npm run dev` en
 `frontend/`. No hay orquestación. **Pasó en la auditoría**: olvidé el worker de grafo y el
 Graph Explorer salía vacío con "No nodes or relations found" — el mensaje no dice cuál de los
 cinco procesos falta.
 **Solución:** un `npm run dev:all` (concurrently) o añadir los workers al `docker-compose.yml`.
+</details>
 
 ### B18. El frontend no tiene `.env` propio 🟢
 Next.js solo lee variables del directorio del proyecto, así que `DATABASE_URL` llegaba vacío y
@@ -258,7 +274,12 @@ Next.js solo lee variables del directorio del proyecto, así que `DATABASE_URL` 
 **Solución:** un `frontend/.env.example` versionado y una nota en el README; hoy nadie que clone
 el repo puede arrancar la UI sin descubrir esto por su cuenta.
 
-### B19. El tablón no se refresca solo ni muestra imágenes 🟢
+### ~~B19. El tablón no se refresca solo ni muestra imágenes~~ ✅ HECHO (2026-08-16)
+El tablón consulta `/api/items` cada 10 s, así que un enlace mandado al bot aparece solo. Cada
+ítem guarda ahora `thumbnail_url` —`og:image` para posts y web, el póster de yt-dlp para vídeo,
+la primera diapositiva para carruseles— y la tarjeta la muestra, ocultándola si el CDN caduca.
+
+<details><summary>Diagnóstico original</summary>
 Dos huecos para que se sienta un tablón de noticias:
 - **Sin refresco automático**: hay que recargar la página para ver lo que acaba de llegar.
   Falta polling o SSE.
@@ -294,14 +315,29 @@ transparencia y desenfoque", "iOS 26 introduce Liquid Glass") y verificar esas.
 sobre el mundo, y descartar las meta-afirmaciones sobre el propio documento. Añadir un umbral
 que omita el fact-checking cuando no salga ninguna afirmación de ese tipo.
 
-### B22. Un ítem en `error` se ve igual que uno pendiente 🟢 NUEVO
+</details>
+
+### ~~B22. Un ítem en `error` se ve igual que uno pendiente~~ ✅ HECHO (2026-08-16)
+Badge **Failed** en rojo para `status = error`, **Partial** en ámbar cuando hay motivo de
+degradación, con el motivo visible en la tarjeta. Un ítem sin ruta de lectura —Reddit— lo dice
+en su propia tarjeta en vez de mostrar su URL como si fuera contenido.
+
+<details><summary>Diagnóstico original</summary>
 El link de Facebook falló la extracción (comportamiento correcto y nuevo), pero en el dashboard
 aparece con el badge `Captured` — el mismo que un ítem recién llegado. No hay indicación de
 fallo ni se muestra el mensaje de la columna `error`.
 **Solución:** un badge de estado `Error` distinguible y mostrar el motivo en el panel de detalle.
 Esto también hará visible el `degradedReason` de los ítems parcialmente ingeridos.
 
-### B20. El RAG solo existe en Telegram 🟢
+</details>
+
+### ~~B20. El RAG solo existe en Telegram~~ ✅ HECHO (2026-08-16)
+`POST /api/ask` en el dashboard: embebe la pregunta, busca por `<=>` sobre los chunks, sintetiza
+y cita fuentes. **No importa `RagService`**: ese módulo vive fuera de la raíz de Next y sus
+especificadores ESM `.js` no resuelven por el bundler, así que la ruta habla con los mismos dos
+servicios por HTTP. Probado en el navegador, no solo por API.
+
+<details><summary>Diagnóstico original</summary>
 `/ask` no está expuesto en la web. El buscador del dashboard filtra por texto en cliente, no usa
 los embeddings. La búsqueda semántica ya funciona ([B13](#b13)) — falta un endpoint y una caja
 de preguntas.

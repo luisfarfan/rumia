@@ -27,24 +27,34 @@ español y en inglés.
 
 ## Qué entiende hoy
 
-| Fuente | Qué extrae | Estado |
+Cada plataforma se lee con una de tres estrategias, según lo que realmente
+expone. Ninguna necesita que inicies sesión.
+
+| Estrategia | Plataformas | Qué extrae |
 |---|---|---|
-| **YouTube** | subtítulos automáticos o transcripción, + lectura de fotogramas | ✅ |
-| **TikTok (vídeo)** | transcripción del audio + lectura del texto en pantalla | ✅ |
-| **TikTok (carrusel)** | transcripción literal de cada diapositiva | ✅ |
-| **Instagram** (post público) | caption completo + lectura de la imagen | ✅ |
-| **Facebook** (post público) | texto del post + lectura de la imagen | ✅ |
-| **Fotos** por Telegram | descripción + transcripción del texto de la imagen | ✅ |
-| **Audios y notas de voz** | transcripción con Whisper | ✅ |
-| **Artículos web** | texto limpio vía Readability | ✅ |
-| **GitHub · X · LinkedIn** | contenido de la página | ✅ |
-| Reddit | — | ❌ requiere su propia vía |
-| PDFs | metadatos, sin extraer texto | ❌ pendiente |
-| Feeds de perfil (no posts) | — | ❌ inaccesibles sin sesión |
+| **Descarga de medios**<br/><sub>yt-dlp</sub> | YouTube · TikTok · Vimeo · Twitch · Dailymotion · SoundCloud | transcripción del audio + lectura de los fotogramas |
+| **Open Graph**<br/><sub>como una tarjeta de previsualización</sub> | Instagram · Facebook · Threads · Bluesky · Mastodon · X · Pinterest · Tumblr | texto del post + lectura de su imagen |
+| **Artículo**<br/><sub>Readability</sub> | GitHub · LinkedIn · Medium · Substack · cualquier web | texto limpio de la página |
+
+Más lo que llega directo al bot: **fotos** (descripción + transcripción del
+texto de la imagen), **audios y notas de voz** (Whisper), y **carruseles de
+TikTok** (transcripción literal de cada diapositiva).
+
+| Sin ruta todavía | Por qué |
+|---|---|
+| Reddit | su API responde 403 sin OAuth, la interfaz antigua redirige, y sus `og:` son un stub genérico sin título ni cuerpo |
+| PDFs | se guardan, no se parsean |
+| Feeds de perfil | un feed no tiene nada que previsualizar; solo los posts individuales exponen contenido |
 
 > **Sobre el OCR:** no hay Tesseract. El tier de visión lee el texto dentro de
 > las imágenes directamente — verificado transcribiendo códigos no adivinables
 > y las 8 diapositivas de un carrusel real, incluida una marca de agua en chino.
+
+El tablón se refresca solo, muestra la imagen de cada publicación, marca en
+ámbar lo que llegó incompleto —con el motivo— y deja preguntarle a todo lo
+ingerido en lenguaje natural:
+
+![Preguntando a la base de conocimiento](docs/dashboard-ask.png)
 
 ## Arquitectura
 
@@ -90,16 +100,16 @@ encolar la siguiente, así que un fallo tardío nunca pierde el trabajo anterior
 flowchart TD
     IN["Enlace o archivo"] --> DET{"¿Qué es?"}
 
-    DET -->|YouTube / TikTok| YT["yt-dlp<br/>audio + fotogramas"]
+    DET -->|YouTube, TikTok, Vimeo,<br/>Twitch, SoundCloud| YT["yt-dlp<br/>audio + fotogramas"]
     YT --> TR["Transcripción<br/>Whisper"]
     YT --> VIS["Lectura visual<br/>tier vision"]
     YT -.->|Unsupported URL| CAR["Carrusel TikTok<br/>scraper API"]
 
-    DET -->|Instagram / Facebook| OG["Open Graph<br/>caption + imagen"]
+    DET -->|Instagram, Facebook, Threads,<br/>Bluesky, Mastodon, X, Pinterest| OG["Open Graph<br/>caption + imagen"]
     OG --> VIS
     DET -->|Foto de Telegram| VIS
     DET -->|Audio / voz| TR
-    DET -->|Web · GitHub · X · LinkedIn| RD["Readability"]
+    DET -->|GitHub, LinkedIn, Medium,<br/>cualquier web| RD["Readability"]
 
     TR --> SYN["Síntesis de la entrada"]
     VIS --> SYN
@@ -166,6 +176,9 @@ Y el dashboard:
 cd frontend && npm install && npm run dev   # http://localhost:3000
 ```
 
+El buscador de la cabecera filtra las tarjetas que ya están en pantalla; la caja
+**Preguntar** busca por significado sobre todo lo ingerido y cita sus fuentes.
+
 > Requiere su propio `frontend/.env.local` con `DATABASE_URL` — Next.js solo lee
 > variables de su propio directorio.
 
@@ -196,7 +209,7 @@ responde citando las fuentes.
 ## Desarrollo
 
 ```bash
-npm test        # 94 tests
+npm test        # 144 tests
 npm run typecheck
 ```
 
@@ -222,7 +235,6 @@ qué comando, y qué salió — incluidas las conclusiones que resultaron falsas
 
 - **Cinco procesos a mano.** No hay orquestación todavía; si olvidas el worker
   del grafo, el explorador aparece vacío sin decirte por qué.
-- **El tablón no se refresca solo** ni muestra las imágenes de los posts.
 - **Depende de servicios locales.** Si la máquina con Ollama o Whisper está
   apagada, esas etapas fallan.
 - **Meta puede cambiar.** Instagram y Facebook funcionan porque sirven Open Graph
