@@ -4,9 +4,15 @@
     {
       "name": "dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3001"
+      ],
       "cwd": "frontend",
-      "port": 3000
+      "port": 3001
     }
   ]
 }

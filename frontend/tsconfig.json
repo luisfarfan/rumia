@@ -20,10 +20,12 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@backend/*": ["../src/*"]
     }
   },
   "include": [
+    "../src/**/*.ts",
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",

@@ -14,7 +14,8 @@ import {
   Layers, 
   Cpu, 
   HelpCircle,
-  TrendingUp
+  TrendingUp,
+  Sparkles,
 } from 'lucide-react';
 
 // Dynamically import ForceGraph2D to avoid SSR "window is not defined" error
@@ -42,6 +43,9 @@ interface CapturedItem {
   createdAt: string;
   category?: string | null;
   tags?: string[] | null;
+  thumbnailUrl?: string | null;
+  /** Why the item is incomplete, when it is. Null means nothing was missing. */
+  issue?: string | null;
   verifications?: ClaimVerification[];
 }
 
@@ -77,6 +81,13 @@ export default function Home() {
   // Selected item detail modal/panel
   const [selectedItem, setSelectedItem] = useState<CapturedItem | null>(null);
 
+  // Semantic question over everything ingested, as opposed to the search box
+  // above, which only filters the cards already on screen.
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState<{ answer: string; sources: Array<{ title: string | null; url: string | null }> } | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+
   // Graph state
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [graphLoading, setGraphLoading] = useState(true);
@@ -84,19 +95,56 @@ export default function Home() {
   const [graphSearchQuery, setGraphSearchQuery] = useState('');
   const fgRef = useRef<any>(null);
 
-  // Fetch Items
+  // Fetch items, then keep the board live. Ingestion is asynchronous — a link
+  // sent to the bot lands here a minute later — so without polling the page is
+  // stale the moment it renders.
   useEffect(() => {
-    fetch('/api/items')
-      .then((res) => res.json())
-      .then((data) => {
-        setItems(Array.isArray(data) ? data : []);
-        setItemsLoading(false);
-      })
-      .catch((err) => {
-        console.error('Error fetching items:', err);
-        setItemsLoading(false);
-      });
+    let cancelled = false;
+
+    const load = () =>
+      fetch('/api/items')
+        .then((res) => res.json())
+        .then((data) => {
+          if (cancelled) return;
+          setItems(Array.isArray(data) ? data : []);
+          setItemsLoading(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error('Error fetching items:', err);
+          setItemsLoading(false);
+        });
+
+    load();
+    const timer = setInterval(load, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
+
+  const askQuestion = async () => {
+    const trimmed = question.trim();
+    if (!trimmed || asking) return;
+    setAsking(true);
+    setAskError(null);
+    setAnswer(null);
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo responder.');
+      setAnswer(data);
+    } catch (err) {
+      // Shown, not swallowed: a blank panel would read as "nothing found".
+      setAskError(err instanceof Error ? err.message : 'No se pudo responder.');
+    } finally {
+      setAsking(false);
+    }
+  };
 
   // Fetch Graph Data
   useEffect(() => {
@@ -123,7 +171,26 @@ export default function Home() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, issue?: string | null) => {
+    // An item that failed, or that arrived with a piece of the pipeline missing,
+    // must not look identical to one that came through whole.
+    if (status === 'error') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+          <ShieldAlert size={12} /> Failed
+        </span>
+      );
+    }
+    if (issue) {
+      return (
+        <span
+          title={issue}
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"
+        >
+          <ShieldAlert size={12} /> Partial
+        </span>
+      );
+    }
     switch (status) {
       case 'graph_extracted':
         return (
@@ -254,6 +321,62 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Ask the knowledge base. The search box above filters what is already
+                  on screen; this searches meaning across everything ingested. */}
+              <div className="mb-6">
+                <div className="relative">
+                  <Sparkles className="absolute left-3 top-3 text-indigo-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Pregúntale a tu base de conocimiento…"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && askQuestion()}
+                    className="w-full pl-10 pr-24 py-2.5 text-sm rounded-xl bg-zinc-900/60 border border-indigo-500/20 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                  />
+                  <button
+                    onClick={askQuestion}
+                    disabled={asking || !question.trim()}
+                    className="absolute right-1.5 top-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-500 transition-all"
+                  >
+                    {asking ? 'Buscando…' : 'Preguntar'}
+                  </button>
+                </div>
+
+                {askError && (
+                  <p className="mt-2 text-xs text-red-400 flex items-center gap-1.5">
+                    <ShieldAlert size={12} /> {askError}
+                  </p>
+                )}
+
+                {answer && (
+                  <div className="mt-3 p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/20">
+                    <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed">{answer.answer}</p>
+                    {answer.sources.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-2">
+                        {answer.sources.map((src) => (
+                          <a
+                            key={src.url ?? src.title ?? Math.random()}
+                            href={src.url ?? '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] px-2 py-1 rounded-md bg-zinc-900 border border-white/5 text-indigo-400 hover:text-indigo-300 max-w-[240px] truncate"
+                          >
+                            {src.title || src.url}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => { setAnswer(null); setQuestion(''); }}
+                      className="mt-3 text-[10px] text-zinc-500 hover:text-zinc-300"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Category Filter Buttons */}
               <div className="flex flex-wrap gap-2 mb-6 pb-2 border-b border-white/5">
                 {['All', 'News', 'Tutorial', 'Opinion', 'Entertainment', 'Documentation', 'Other', 'Unknown'].map((cat) => (
@@ -306,16 +429,41 @@ export default function Home() {
                                 </span>
                               )}
                             </div>
-                            {getStatusBadge(item.status)}
+                            {getStatusBadge(item.status, item.issue)}
                           </div>
 
                           <h3 className="text-sm font-semibold text-white line-clamp-2 mb-2">
                             {item.title || item.rawInput || 'Captured Content'}
                           </h3>
 
-                          {item.content && (
-                            <p className="text-xs text-zinc-400 line-clamp-3 mb-3">
-                              {item.content}
+                          <div className="flex gap-3 mb-3">
+                            {item.thumbnailUrl && (
+                              // The post's own image. Social content is visual first;
+                              // a wall of paragraphs is not what it looked like.
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.thumbnailUrl}
+                                alt=""
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  // CDN links expire; hide rather than show a broken frame.
+                                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                }}
+                                className="w-20 h-20 shrink-0 rounded-lg object-cover border border-white/10 bg-zinc-900"
+                              />
+                            )}
+                            {item.content && (
+                              <p className="text-xs text-zinc-400 line-clamp-4 flex-1">
+                                {item.content}
+                              </p>
+                            )}
+                          </div>
+
+                          {item.issue && (
+                            <p className="text-[10px] text-amber-400/80 mb-3 flex items-start gap-1">
+                              <ShieldAlert size={11} className="shrink-0 mt-px" />
+                              <span className="line-clamp-2">{item.issue}</span>
                             </p>
                           )}
 
