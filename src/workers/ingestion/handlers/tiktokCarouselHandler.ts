@@ -8,6 +8,8 @@ import { imageMimeType } from '../../../utils/media/imageMime.js';
 interface CarouselHandlerResult {
   title: string;
   content: string;
+  /** The first slide, which is the cover the platform itself shows. */
+  thumbnailUrl: string | null;
 }
 
 /** Cap on slides sent to the model: carousels are usually under 10, and each
@@ -79,6 +81,7 @@ export async function tiktokCarouselHandler(url: string, itemId: string): Promis
     return {
       title,
       content: `${analysis}${truncated}`,
+      thumbnailUrl: images[0] ?? null,
     };
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

@@ -84,6 +84,7 @@ export const worker = new Worker(
       content: finalContent || undefined,
       category,
       tags,
+      thumbnailUrl: dispatchResult.thumbnailUrl,
       // Keeps a degraded ingestion distinguishable from a complete one in the DB
       // and the dashboard, instead of both looking equally successful.
       error: dispatchResult.degradedReason,

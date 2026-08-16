@@ -16,12 +16,12 @@ import { dispatchIngestion, type IngestionHandlers } from '../src/workers/ingest
 
 function fakeHandlers(overrides: Partial<IngestionHandlers> = {}): IngestionHandlers {
   return {
-    webExtractionHandler: vi.fn(async () => ({ title: 'web title', description: 'web desc', content: 'web content' })),
+    webExtractionHandler: vi.fn(async () => ({ title: 'web title', description: 'web desc', content: 'web content', thumbnailUrl: null })),
     audioTranscriptionHandler: vi.fn(async () => ({ content: 'audio content' })),
-    socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false, transcriptionFailed: false })),
+    socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false, transcriptionFailed: false, thumbnailUrl: 'https://cdn/poster.jpg' })),
     photoHandler: vi.fn(async () => ({ title: 'photo title', content: 'photo content' })),
-    tiktokCarouselHandler: vi.fn(async () => ({ title: 'carousel title', content: 'carousel content' })),
-    metaPostHandler: vi.fn(async () => ({ title: 'meta title', content: 'meta content', visualAnalysisFailed: false })),
+    tiktokCarouselHandler: vi.fn(async () => ({ title: 'carousel title', content: 'carousel content', thumbnailUrl: 'https://cdn/slide0.webp' })),
+    socialPostHandler: vi.fn(async () => ({ title: 'meta title', content: 'meta content', visualAnalysisFailed: false, thumbnailUrl: 'https://cdn/preview.jpg' })),
     ...overrides,
   };
 }
@@ -69,7 +69,7 @@ describe('dispatchIngestion', () => {
     }
   });
 
-  it.each(['github', 'x', 'linkedin'])(
+  it.each(['github', 'linkedin', 'medium'])(
     'un ítem %s con URL se enruta a extracción web',
     async (detectedSource) => {
       const handlers = fakeHandlers();
@@ -86,6 +86,7 @@ describe('dispatchIngestion', () => {
         title: 'web title',
         content: 'web content',
         description: 'web desc',
+        thumbnailUrl: null,
         degradedReason: null,
       });
     }
@@ -222,6 +223,7 @@ describe('dispatchIngestion', () => {
         content: 'solo transcripción',
         visualAnalysisFailed: true,
         transcriptionFailed: false,
+        thumbnailUrl: null,
       })),
     });
 
@@ -249,8 +251,8 @@ describe('dispatchIngestion', () => {
     expect(result.content).toBe('audio content');
   });
 
-  it.each(['instagram', 'facebook'])(
-    'un ítem %s se enruta al handler de posts de Meta',
+  it.each(['instagram', 'facebook', 'threads', 'bluesky', 'x', 'pinterest', 'mastodon'])(
+    'un ítem %s se enruta al handler de posts por Open Graph',
     async (detectedSource) => {
       const handlers = fakeHandlers();
 
@@ -260,15 +262,16 @@ describe('dispatchIngestion', () => {
         { handlers }
       );
 
-      expect(handlers.metaPostHandler).toHaveBeenCalledWith('https://www.instagram.com/p/ABC/', 'item-meta');
+      expect(handlers.socialPostHandler).toHaveBeenCalledWith('https://www.instagram.com/p/ABC/', 'item-meta');
       expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
       expect(result.content).toBe('meta content');
+      expect(result.thumbnailUrl).toBe('https://cdn/preview.jpg');
     }
   );
 
   it('un post de Meta con la imagen ilegible queda marcado como degradado', async () => {
     const handlers = fakeHandlers({
-      metaPostHandler: vi.fn(async () => ({ title: 't', content: 'solo caption', visualAnalysisFailed: true })),
+      socialPostHandler: vi.fn(async () => ({ title: 't', content: 'solo caption', visualAnalysisFailed: true, thumbnailUrl: null })),
     });
 
     const result = await dispatchIngestion(
@@ -293,6 +296,7 @@ describe('dispatchIngestion', () => {
 
       expect(result.handled).toBe(false);
       expect(result.content).toBe('texto crudo original');
+      expect(result.degradedReason).toMatch(/no reader for source/);
       expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
       expect(handlers.socialMediaHandler).not.toHaveBeenCalled();
       expect(handlers.audioTranscriptionHandler).not.toHaveBeenCalled();

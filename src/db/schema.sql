@@ -24,6 +24,8 @@ ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS mime_type VARCHAR(100);
 ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS file_size INTEGER;
 ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS category VARCHAR(50);
 ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]';
+-- Preview image for the dashboard: og:image for posts, the poster frame for video.
+ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_captured_items_category ON captured_items(category);
 

@@ -1,4 +1,5 @@
 import type { CapturedItem } from '../../core/models.js';
+import { strategyFor } from '../../core/sources.js';
 // Type-only imports: erased at compile time, so referencing these handlers' types
 // does not pull their modules (or anything *they* import, e.g. the Telegram bot
 // client) into dispatchIngestion's module graph. The real functions are loaded
@@ -8,7 +9,7 @@ import type { audioTranscriptionHandler as AudioTranscriptionHandlerFn } from '.
 import type { socialMediaHandler as SocialMediaHandlerFn } from './handlers/socialMediaHandler.js';
 import type { photoHandler as PhotoHandlerFn } from './handlers/photoHandler.js';
 import type { tiktokCarouselHandler as TiktokCarouselHandlerFn } from './handlers/tiktokCarouselHandler.js';
-import type { metaPostHandler as MetaPostHandlerFn } from './handlers/metaPostHandler.js';
+import type { socialPostHandler as SocialPostHandlerFn } from './handlers/socialPostHandler.js';
 
 /** The subset of a captured item the dispatcher needs to pick and run a handler. */
 export type DispatchableItem = Pick<
@@ -28,6 +29,8 @@ export interface DispatchIngestionResult {
    * Null means nothing was missing.
    */
   degradedReason: string | null;
+  /** Preview image for the dashboard, when the source exposes one. */
+  thumbnailUrl: string | null;
 }
 
 /**
@@ -42,7 +45,7 @@ export interface IngestionHandlers {
   socialMediaHandler?: typeof SocialMediaHandlerFn;
   photoHandler?: typeof PhotoHandlerFn;
   tiktokCarouselHandler?: typeof TiktokCarouselHandlerFn;
-  metaPostHandler?: typeof MetaPostHandlerFn;
+  socialPostHandler?: typeof SocialPostHandlerFn;
 }
 
 /** Lazily imports the real web-extraction handler. Only called when an item is
@@ -80,10 +83,10 @@ async function loadTiktokCarouselHandler(): Promise<typeof TiktokCarouselHandler
   return mod.tiktokCarouselHandler;
 }
 
-/** Lazily imports the Instagram/Facebook post handler. */
-async function loadMetaPostHandler(): Promise<typeof MetaPostHandlerFn> {
-  const mod = await import('./handlers/metaPostHandler.js');
-  return mod.metaPostHandler;
+/** Lazily imports the Open Graph post handler, shared by every social platform. */
+async function loadSocialPostHandler(): Promise<typeof SocialPostHandlerFn> {
+  const mod = await import('./handlers/socialPostHandler.js');
+  return mod.socialPostHandler;
 }
 
 export type IngestionStatus = 'extracting' | 'transcribing';
@@ -91,26 +94,6 @@ export type IngestionStatus = 'extracting' | 'transcribing';
 /** Called right before a handler that will take a while starts doing real work. */
 export type StatusUpdater = (status: IngestionStatus) => Promise<void>;
 
-/** Source types with their own dedicated handler; anything else with a URL falls
- *  through to generic web extraction. Reddit and Instagram are deliberately kept
- *  out of that fallback (D1): they need their own route, not a generic scrape.
- *  `photo` belongs here because the image IS the content — a link that happens to
- *  be in its caption must not divert the item to a web scrape. */
-const NON_WEB_SOURCE_TYPES = new Set([
-  'youtube',
-  'tiktok',
-  'photo',
-  'audio',
-  'voice',
-  'instagram',
-  'facebook',
-  'reddit',
-  'pdf',
-]);
-
-/** Source types that always route to web extraction, whether or not a generic URL
- *  fallback would also have matched them. */
-const WEB_SOURCE_TYPES = new Set(['web', 'url', 'github', 'x', 'linkedin']);
 
 /**
  * Resolves which handler applies to a captured item's source type and runs it.
@@ -135,7 +118,9 @@ export async function dispatchIngestion(
   const onStatusChange = options.onStatusChange ?? (async () => {});
   const type = item.detectedSource || 'text';
 
-  if (type === 'youtube' || type === 'tiktok') {
+  const strategy = strategyFor(type);
+
+  if (strategy === 'media') {
     const url = item.originalUrl;
     if (!url) {
       throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
@@ -155,6 +140,7 @@ export async function dispatchIngestion(
         title: result.title,
         content: result.content,
         description: '',
+        thumbnailUrl: result.thumbnailUrl,
         degradedReason: missing.length
           ? `${missing.join(' and ')} unavailable: entry built from the remaining sources`
           : null,
@@ -175,7 +161,8 @@ export async function dispatchIngestion(
             title: carousel.title,
             content: carousel.content,
             description: '',
-            degradedReason: null,
+            thumbnailUrl: carousel.thumbnailUrl,
+        degradedReason: null,
           };
         } catch (carouselError) {
           console.warn(`[dispatchIngestion] Carousel handler failed for ${url}:`, carouselError);
@@ -190,6 +177,7 @@ export async function dispatchIngestion(
         title: result.title,
         content: result.content,
         description: result.description || '',
+        thumbnailUrl: null,
         degradedReason:
           type === 'tiktok'
             ? 'tiktok carousel unavailable: fell back to page metadata'
@@ -198,7 +186,7 @@ export async function dispatchIngestion(
     }
   }
 
-  if (type === 'instagram' || type === 'facebook') {
+  if (strategy === 'post') {
     const url = item.originalUrl;
     if (!url) {
       throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
@@ -206,13 +194,14 @@ export async function dispatchIngestion(
 
     await onStatusChange('extracting');
 
-    const metaPostHandler = options.handlers?.metaPostHandler ?? (await loadMetaPostHandler());
-    const result = await metaPostHandler(url, itemId);
+    const socialPostHandler = options.handlers?.socialPostHandler ?? (await loadSocialPostHandler());
+    const result = await socialPostHandler(url, itemId);
     return {
       handled: true,
       title: result.title,
       content: result.content,
       description: '',
+      thumbnailUrl: result.thumbnailUrl,
       degradedReason: result.visualAnalysisFailed
         ? 'post image unreadable: entry built from the caption only'
         : null,
@@ -237,14 +226,12 @@ export async function dispatchIngestion(
       title: result.title,
       content: result.content,
       description: '',
-      degradedReason: null,
+      thumbnailUrl: null,
+        degradedReason: null,
     };
   }
 
-  const isWebSource =
-    WEB_SOURCE_TYPES.has(type) || (!!item.originalUrl && !NON_WEB_SOURCE_TYPES.has(type));
-
-  if (isWebSource) {
+  if (strategy === 'web' && item.originalUrl) {
     if (!item.originalUrl) {
       throw new Error(`Item ${itemId} has source type ${type} but no originalUrl.`);
     }
@@ -258,6 +245,7 @@ export async function dispatchIngestion(
       title: result.title,
       content: result.content,
       description: result.description || '',
+      thumbnailUrl: result.thumbnailUrl,
       degradedReason: null,
     };
   }
@@ -272,10 +260,19 @@ export async function dispatchIngestion(
     const audioTranscriptionHandler =
       options.handlers?.audioTranscriptionHandler ?? (await loadAudioTranscriptionHandler());
     const result = await audioTranscriptionHandler(item.fileId, item.fileSize);
-    return { handled: true, title: '', content: result.content, description: '', degradedReason: null };
+    return { handled: true, title: '', content: result.content, description: '', thumbnailUrl: null, degradedReason: null };
   }
 
-  return { handled: false, title: '', content: item.rawInput, description: '', degradedReason: null };
+  // No reader applies. Say so explicitly: an item whose "content" is its own URL
+  // looks ingested in the dashboard, and that is the illusion this records against.
+  return {
+    handled: false,
+    title: '',
+    content: item.rawInput,
+    description: '',
+    thumbnailUrl: null,
+    degradedReason: `no reader for source "${type}": stored as the raw link`,
+  };
 }
 
 /** Flattens an error into searchable text. yt-dlp surfaces its reason on `stderr`

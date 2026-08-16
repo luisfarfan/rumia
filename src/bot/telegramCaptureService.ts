@@ -1,6 +1,7 @@
 import { CapturedItemsRepo } from '../db/capturedItemsRepo.js';
 import type { CapturedItem, CapturedFile } from '../core/models.js';
 import { ingestionQueue } from '../workers/ingestion/queue.js';
+import { detectSource } from '../core/sources.js';
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/;
 
@@ -19,21 +20,11 @@ export class TelegramCaptureService {
   }
 
   /**
-   * Identifies a basic provider based on the URL (placeholder for full SourceResolver).
+   * Identifies the platform a URL belongs to. Delegates to the shared source
+   * table so a new platform is added in one place.
    */
   static detectSource(url?: string): string | undefined {
-    if (!url) return undefined;
-    const lower = url.toLowerCase();
-    if (lower.includes('youtube.com') || lower.includes('youtu.be')) return 'youtube';
-    if (lower.includes('tiktok.com')) return 'tiktok';
-    if (lower.includes('instagram.com')) return 'instagram';
-    if (lower.includes('facebook.com') || lower.includes('fb.watch')) return 'facebook';
-    if (lower.includes('twitter.com') || lower.includes('x.com')) return 'x';
-    if (lower.includes('linkedin.com')) return 'linkedin';
-    if (lower.includes('reddit.com')) return 'reddit';
-    if (lower.includes('github.com')) return 'github';
-    if (lower.endsWith('.pdf')) return 'pdf';
-    return 'web';
+    return detectSource(url);
   }
 
   /**

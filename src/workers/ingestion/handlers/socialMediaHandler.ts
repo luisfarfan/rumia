@@ -9,6 +9,8 @@ interface SocialMediaHandlerResult {
   visualAnalysisFailed: boolean;
   /** True when speech could not be transcribed, so the entry is visual-only. */
   transcriptionFailed: boolean;
+  /** The platform's poster frame, for the dashboard preview. */
+  thumbnailUrl: string | null;
 }
 
 /**
@@ -39,7 +41,7 @@ export async function socialMediaHandler(url: string, itemId: string): Promise<S
       framePaths: media.framePaths,
     });
 
-    return result;
+    return { ...result, thumbnailUrl: media.thumbnailUrl };
   } finally {
     // 4. Guaranteed cleanup to prevent disk leaks
     media.cleanup();

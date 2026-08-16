@@ -5,6 +5,8 @@ interface WebExtractionResult {
   title: string;
   description: string;
   content: string;
+  /** og:image when the page offers one, for the dashboard preview. */
+  thumbnailUrl: string | null;
 }
 
 /**
@@ -32,6 +34,8 @@ export async function webExtractionHandler(url: string): Promise<WebExtractionRe
   const descriptionMeta = doc.querySelector('meta[name="description"]') || 
                           doc.querySelector('meta[property="og:description"]');
   const description = descriptionMeta ? descriptionMeta.getAttribute('content') || '' : '';
+  const thumbnailUrl =
+    doc.querySelector('meta[property="og:image"]')?.getAttribute('content')?.trim() || null;
 
   // Extract readable article
   const reader = new Readability(doc);
@@ -49,6 +53,7 @@ export async function webExtractionHandler(url: string): Promise<WebExtractionRe
       title: article?.title || doc.title || 'Untitled',
       description: trimmedDescription,
       content: trimmedDescription,
+      thumbnailUrl,
     };
   }
 
@@ -56,5 +61,6 @@ export async function webExtractionHandler(url: string): Promise<WebExtractionRe
     title: article?.title || doc.title || 'Untitled',
     description: trimmedDescription,
     content: articleText,
+      thumbnailUrl,
   };
 }

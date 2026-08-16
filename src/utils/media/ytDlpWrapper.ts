@@ -11,6 +11,8 @@ const execFileAsync = promisify(execFile);
 export interface IngestionMediaResult {
   title: string;
   duration: number;
+  /** The platform's own poster frame, for the dashboard preview. */
+  thumbnailUrl: string | null;
   subtitlesText: string | null;
   audioPath: string | null;
   framePaths: string[];
@@ -50,6 +52,7 @@ export class YtDlpWrapper {
 
       const title = metadata.title || 'Untitled Video';
       const duration = Number(metadata.duration) || 0;
+      const thumbnailUrl: string | null = metadata.thumbnail || metadata.thumbnails?.at(-1)?.url || null;
       console.log(`[YtDlpWrapper] Metadata retrieved. Title: "${title}", Duration: ${duration}s`);
 
       // 2. Try fetching subtitles (Fast-Path for YouTube)
@@ -144,6 +147,7 @@ export class YtDlpWrapper {
       return {
         title,
         duration,
+        thumbnailUrl,
         subtitlesText,
         audioPath,
         framePaths,

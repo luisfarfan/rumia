@@ -5,17 +5,27 @@ import { ImageAnalysisService } from '../../../services/imageAnalysisService.js'
 import { fetchOpenGraph } from '../../../utils/media/ogTags.js';
 import { extensionForContentType } from '../../../utils/media/imageMime.js';
 
-interface MetaPostHandlerResult {
+interface SocialPostHandlerResult {
   title: string;
   content: string;
   /** True when the post's image could not be read, so only the caption survived. */
   visualAnalysisFailed: boolean;
+  /** The post's own image, kept for the dashboard preview. */
+  thumbnailUrl: string | null;
 }
 
-/** Instagram and Facebook only expose a single post's metadata. A profile URL has
- *  nothing to preview, so it yields the account bio and would be stored as if it
- *  were content. */
-const POST_URL_PATTERN = /\/(p|reel|reels|tv|posts|permalink\.php|photo|videos|share)\b/i;
+/**
+ * A platform exposes one post's content, not a feed's. A profile URL has nothing
+ * to preview, so it yields the account bio — which would be stored as if it were
+ * a post.
+ *
+ * Covers the post shapes of every routed platform: Instagram `/p/` `/reel/`,
+ * Facebook `/posts/` `/permalink.php`, Threads and Bluesky `/post/`, X
+ * `/status/`, Pinterest `/pin/`, Tumblr `/post/`, and Mastodon's numeric status
+ * id (`/@user/113…`).
+ */
+const POST_URL_PATTERN =
+  /\/(p|reel|reels|tv|posts?|permalink\.php|photo|videos|share|status(?:es)?|pin)\b|\/@[^/]+\/\d{6,}/i;
 
 function extensionFor(imageUrl: string): string {
   const pathname = imageUrl.split('?')[0] ?? '';
@@ -31,7 +41,7 @@ function extensionFor(imageUrl: string): string {
  * with a read of the image itself — for an image-first platform the picture is
  * most of the content, and the vision tier transcribes any text in it.
  */
-export async function metaPostHandler(url: string, itemId: string): Promise<MetaPostHandlerResult> {
+export async function socialPostHandler(url: string, itemId: string): Promise<SocialPostHandlerResult> {
   if (!POST_URL_PATTERN.test(new URL(url).pathname)) {
     throw new Error(
       `${url} looks like a profile or feed, not a single post. ` +
@@ -39,7 +49,7 @@ export async function metaPostHandler(url: string, itemId: string): Promise<Meta
     );
   }
 
-  console.log(`[MetaPost] Fetching Open Graph metadata for ${url}`);
+  console.log(`[SocialPost] Fetching Open Graph metadata for ${url}`);
   const og = await fetchOpenGraph(url);
 
   // The caption lives in og:title on Instagram and in og:description on Facebook,
@@ -81,16 +91,16 @@ export async function metaPostHandler(url: string, itemId: string): Promise<Meta
     } catch (err) {
       // The caption is still worth keeping; the entry is just degraded, and the
       // caller records why rather than storing the error as content.
-      console.warn(`[MetaPost] Could not read the post image for ${url}:`, err);
+      console.warn(`[SocialPost] Could not read the post image for ${url}:`, err);
       visualAnalysisFailed = true;
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   } else {
-    console.warn(`[MetaPost] ${url} exposed no og:image.`);
+    console.warn(`[SocialPost] ${url} exposed no og:image.`);
   }
 
   const title = caption.split('\n')[0]?.slice(0, 120) || 'Publicación sin título';
 
-  return { title, content: parts.join('\n\n'), visualAnalysisFailed };
+  return { title, content: parts.join('\n\n'), visualAnalysisFailed, thumbnailUrl: og.image ?? null };
 }
