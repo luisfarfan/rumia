@@ -177,13 +177,18 @@ describe('dispatchIngestion', () => {
     expect(result.degradedReason).toBeNull();
   });
 
-  it('si el carrusel también falla, cae a extracción web y queda marcado como degradado', async () => {
+  it('si el carrusel también falla, prueba Open Graph y solo entonces extracción web', async () => {
+    // La cadena completa: medios → carrusel → Open Graph → página. Cada eslabón
+    // existe porque el anterior falla de una forma distinta y recuperable.
     const handlers = fakeHandlers({
       socialMediaHandler: vi.fn(async () => {
         throw unsupportedUrlError();
       }),
       tiktokCarouselHandler: vi.fn(async () => {
         throw new Error('rate limited');
+      }),
+      socialPostHandler: vi.fn(async () => {
+        throw new Error('sin og:');
       }),
     });
 
@@ -197,23 +202,44 @@ describe('dispatchIngestion', () => {
     expect(result.degradedReason).toMatch(/carousel unavailable/);
   });
 
-  it('un fallo de social media que NO sea "Unsupported URL" se propaga sin intentar el carrusel', async () => {
-    const boom = new Error('la red se cayó');
+  it('cuando la descarga de medios falla, cae a Open Graph y lo marca, en vez de perder el ítem', async () => {
+    // Vimeo exige OAuth para algunos vídeos y yt-dlp devuelve 401; la página en sí
+    // sigue siendo legible, y su og: trae título, descripción y póster.
     const handlers = fakeHandlers({
       socialMediaHandler: vi.fn(async () => {
-        throw boom;
+        throw new Error('Failed to fetch macos OAuth token: HTTP Error 401: Unauthorized');
       }),
     });
 
-    await expect(
-      dispatchIngestion(
-        { detectedSource: 'tiktok', originalUrl: 'https://www.tiktok.com/@x/video/1', rawInput: 'raw' },
-        'item-4e',
-        { handlers }
-      )
-    ).rejects.toThrow(boom);
-    expect(handlers.tiktokCarouselHandler).not.toHaveBeenCalled();
-    expect(handlers.webExtractionHandler).not.toHaveBeenCalled();
+    const result = await dispatchIngestion(
+      { detectedSource: 'vimeo', originalUrl: 'https://vimeo.com/1052470502', rawInput: 'raw' },
+      'item-4e',
+      { handlers }
+    );
+
+    expect(handlers.socialPostHandler).toHaveBeenCalled();
+    expect(result.content).toBe('meta content');
+    expect(result.degradedReason).toMatch(/media download unavailable/);
+  });
+
+  it('si Open Graph tampoco puede, cae a extracción web antes de rendirse', async () => {
+    const handlers = fakeHandlers({
+      socialMediaHandler: vi.fn(async () => {
+        throw new Error('geo-blocked');
+      }),
+      socialPostHandler: vi.fn(async () => {
+        throw new Error('sin og:');
+      }),
+    });
+
+    const result = await dispatchIngestion(
+      { detectedSource: 'vimeo', originalUrl: 'https://vimeo.com/1', rawInput: 'raw' },
+      'item-4e2',
+      { handlers }
+    );
+
+    expect(handlers.webExtractionHandler).toHaveBeenCalled();
+    expect(result.degradedReason).toMatch(/media extraction unavailable/);
   });
 
   it('cuando el análisis visual falla, el resultado queda marcado como degradado', async () => {

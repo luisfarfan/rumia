@@ -19,6 +19,15 @@ export interface IngestionMediaResult {
   cleanup: () => void;
 }
 
+/**
+ * Above this, downloading the media costs more than it is worth: a multi-hour
+ * Twitch VOD or conference stream pulls hundreds of megabytes and occupies a
+ * worker slot for the whole download. Measured here — a Twitch VOD held one slot
+ * for over ten minutes with no end in sight. Long items fall back to the page's
+ * own metadata instead, which is marked degraded rather than silently thinner.
+ */
+const MAX_MEDIA_SECONDS = Number(process.env.MAX_MEDIA_SECONDS) || 3600;
+
 export class YtDlpWrapper {
   /**
    * Extracts metadata, downloads audio (if no subtitles found), and extracts keyframes from a YouTube/TikTok URL.
@@ -54,6 +63,13 @@ export class YtDlpWrapper {
       const duration = Number(metadata.duration) || 0;
       const thumbnailUrl: string | null = metadata.thumbnail || metadata.thumbnails?.at(-1)?.url || null;
       console.log(`[YtDlpWrapper] Metadata retrieved. Title: "${title}", Duration: ${duration}s`);
+
+      if (duration > MAX_MEDIA_SECONDS) {
+        throw new Error(
+          `Media too long to download: ${Math.round(duration / 60)} min exceeds the ` +
+            `${Math.round(MAX_MEDIA_SECONDS / 60)} min cap (MAX_MEDIA_SECONDS).`
+        );
+      }
 
       // 2. Try fetching subtitles (Fast-Path for YouTube)
       let subtitlesText: string | null = null;

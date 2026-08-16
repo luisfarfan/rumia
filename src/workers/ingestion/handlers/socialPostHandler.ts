@@ -21,11 +21,11 @@ interface SocialPostHandlerResult {
  *
  * Covers the post shapes of every routed platform: Instagram `/p/` `/reel/`,
  * Facebook `/posts/` `/permalink.php`, Threads and Bluesky `/post/`, X
- * `/status/`, Pinterest `/pin/`, Tumblr `/post/`, and Mastodon's numeric status
- * id (`/@user/113…`).
+ * `/status/`, Pinterest `/pin/`, and the `<author>/<numeric id>` shape used by
+ * both Mastodon (`/@user/113…`) and Tumblr (`/blog/825…`).
  */
 const POST_URL_PATTERN =
-  /\/(p|reel|reels|tv|posts?|permalink\.php|photo|videos|share|status(?:es)?|pin)\b|\/@[^/]+\/\d{6,}/i;
+  /\/(p|reel|reels|tv|posts?|permalink\.php|photo|videos|share|status(?:es)?|pin)\b|\/[^/]+\/\d{6,}\/?$/i;
 
 function extensionFor(imageUrl: string): string {
   const pathname = imageUrl.split('?')[0] ?? '';

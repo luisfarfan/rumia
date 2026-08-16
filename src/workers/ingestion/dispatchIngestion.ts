@@ -149,9 +149,8 @@ export async function dispatchIngestion(
       // yt-dlp rejects TikTok photo carousels with "Unsupported URL". Those are not
       // broken links — they are slideshows, and the scraper API can read them.
       const text = describeError(mediaError);
-      if (!text.includes('Unsupported URL')) throw mediaError;
 
-      if (type === 'tiktok') {
+      if (type === 'tiktok' && text.includes('Unsupported URL')) {
         try {
           const carouselHandler =
             options.handlers?.tiktokCarouselHandler ?? (await loadTiktokCarouselHandler());
@@ -169,6 +168,26 @@ export async function dispatchIngestion(
         }
       }
 
+      // Any other media failure — a platform demanding OAuth, a geo-block, a
+      // removed video — still leaves the page itself readable. Its Open Graph
+      // tags carry the title, description and poster, which beats losing the
+      // item entirely, and the caller records that the media was not read.
+      try {
+        const socialPostHandler = options.handlers?.socialPostHandler ?? (await loadSocialPostHandler());
+        const post = await socialPostHandler(url, itemId);
+        return {
+          handled: true,
+          title: post.title,
+          content: post.content,
+          description: '',
+          thumbnailUrl: post.thumbnailUrl,
+          degradedReason:
+            'media download unavailable: entry built from the page description, not the video itself',
+        };
+      } catch (postError) {
+        console.warn(`[dispatchIngestion] Open Graph fallback failed for ${url}:`, postError);
+      }
+
       const webExtractionHandler =
         options.handlers?.webExtractionHandler ?? (await loadWebExtractionHandler());
       const result = await webExtractionHandler(url);
@@ -177,7 +196,7 @@ export async function dispatchIngestion(
         title: result.title,
         content: result.content,
         description: result.description || '',
-        thumbnailUrl: null,
+        thumbnailUrl: result.thumbnailUrl,
         degradedReason:
           type === 'tiktok'
             ? 'tiktok carousel unavailable: fell back to page metadata'
