@@ -13,6 +13,8 @@ interface SocialMediaHandlerResult {
   thumbnailUrl: string | null;
   /** The source's own words, before synthesis rewrote them. */
   transcript: string | null;
+  /** ISO 639-1 code of the source. */
+  language: string | null;
 }
 
 /**

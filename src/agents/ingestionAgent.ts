@@ -1,6 +1,7 @@
 import { StateGraph, Annotation } from '@langchain/langgraph';
 import { LLMFactory } from '../core/llm/LLMFactory.js';
 import { audioTranscriptionHandler } from '../workers/ingestion/handlers/audioTranscriptionHandler.js';
+import { detectLanguage, languageName } from '../utils/language.js';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -18,6 +19,7 @@ const IngestionAgentState = Annotation.Root({
   visualAnalysis: Annotation<string | null>(),
   visualAnalysisFailed: Annotation<boolean>(),
   transcriptionFailed: Annotation<boolean>(),
+  language: Annotation<string | null>(),
   synthesizedContent: Annotation<string | null>(),
 });
 
@@ -36,7 +38,7 @@ async function transcribeAudio(state: typeof IngestionAgentState.State) {
     console.log('[IngestionAgent] Transcribing downloaded audio file...');
     try {
       const result = await audioTranscriptionHandler(state.audioPath);
-      return { audioTranscript: result.content, transcriptionFailed: false };
+      return { audioTranscript: result.content, transcriptionFailed: false, language: result.language };
     } catch (err) {
       // Same rule as the vision node: never hand the error text downstream as if
       // it were speech. A silent clip is also a legitimate outcome here — the
@@ -101,13 +103,22 @@ Produce a structured visual timeline.`;
 async function synthesizeKnowledge(state: typeof IngestionAgentState.State) {
   console.log('[IngestionAgent] Node: synthesizeKnowledge');
 
+  // Naming the language beats asking the model to infer it: inference is what
+  // silently produced an English page from a Spanish video. Whisper's reading of
+  // the audio wins; otherwise it is detected from the text we do have.
+  const detected =
+    state.language ?? detectLanguage(state.audioTranscript ?? state.visualAnalysis);
+  const languageDirective = detected
+    ? `write the entire document in ${languageName(detected)} (${detected}), which is the language of the source.`
+    : 'write the entire document in the SAME LANGUAGE as the transcript and on-screen text below.';
+  console.log(`[IngestionAgent] Source language: ${detected ?? 'undetermined'}`);
+
   const systemPrompt = `You are an expert technical writer and knowledge base synthesizer.
 Write a clear, well-structured Markdown document for a personal knowledge wiki.
 
-LANGUAGE — this rule overrides everything else: write the entire document in the
-SAME LANGUAGE as the transcript and on-screen text below. If the source is in
-Spanish, the document is in Spanish. Never translate the source into English.
-Translation is a separate action the reader asks for; it is not your job here.
+LANGUAGE — this rule overrides everything else: ${languageDirective}
+Never translate the source. Translation is a separate action the reader asks for;
+it is not your job here.
 
 FIDELITY: build the document only from what the transcript and the visual
 analysis actually contain. Do not pad it with background knowledge the source
@@ -183,6 +194,8 @@ export async function runIngestionAgent(params: {
   /** What was literally said, before any rewriting. Kept so the reader can see
    *  the source's own words rather than only the model's summary of them. */
   transcript: string | null;
+  /** ISO 639-1 code of the source, when it could be determined. */
+  language: string | null;
   visualAnalysisFailed: boolean;
   transcriptionFailed: boolean;
 }> {
@@ -202,6 +215,7 @@ export async function runIngestionAgent(params: {
     title: params.title,
     content: result.synthesizedContent || '',
     transcript: result.audioTranscript ?? null,
+    language: result.language ?? detectLanguage(result.synthesizedContent) ?? null,
     visualAnalysisFailed: result.visualAnalysisFailed === true,
     transcriptionFailed: result.transcriptionFailed === true,
   };

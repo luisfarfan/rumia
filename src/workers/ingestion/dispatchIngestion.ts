@@ -1,5 +1,6 @@
 import type { CapturedItem } from '../../core/models.js';
 import { strategyFor } from '../../core/sources.js';
+import { detectLanguage } from '../../utils/language.js';
 // Type-only imports: erased at compile time, so referencing these handlers' types
 // does not pull their modules (or anything *they* import, e.g. the Telegram bot
 // client) into dispatchIngestion's module graph. The real functions are loaded
@@ -33,6 +34,8 @@ export interface DispatchIngestionResult {
   thumbnailUrl: string | null;
   /** Verbatim transcript when the source had speech; null otherwise. */
   transcript: string | null;
+  /** ISO 639-1 code of the source, when it could be determined. */
+  language: string | null;
 }
 
 /**
@@ -144,6 +147,7 @@ export async function dispatchIngestion(
         description: '',
         thumbnailUrl: result.thumbnailUrl,
         transcript: result.transcript,
+        language: result.language,
         degradedReason: missing.length
           ? `${missing.join(' and ')} unavailable: entry built from the remaining sources`
           : null,
@@ -165,6 +169,7 @@ export async function dispatchIngestion(
             description: '',
             thumbnailUrl: carousel.thumbnailUrl,
         transcript: null,
+        language: null,
         degradedReason: null,
           };
         } catch (carouselError) {
@@ -186,6 +191,7 @@ export async function dispatchIngestion(
           description: '',
           thumbnailUrl: post.thumbnailUrl,
         transcript: null,
+        language: null,
           degradedReason:
             'media download unavailable: entry built from the page description, not the video itself',
         };
@@ -203,6 +209,7 @@ export async function dispatchIngestion(
         description: result.description || '',
         thumbnailUrl: result.thumbnailUrl,
         transcript: null,
+        language: null,
         degradedReason:
           type === 'tiktok'
             ? 'tiktok carousel unavailable: fell back to page metadata'
@@ -228,6 +235,7 @@ export async function dispatchIngestion(
       description: '',
       thumbnailUrl: result.thumbnailUrl,
         transcript: null,
+        language: null,
       degradedReason: result.visualAnalysisFailed
         ? 'post image unreadable: entry built from the caption only'
         : null,
@@ -254,6 +262,7 @@ export async function dispatchIngestion(
       description: '',
       thumbnailUrl: null,
         transcript: null,
+        language: null,
         degradedReason: null,
     };
   }
@@ -274,6 +283,7 @@ export async function dispatchIngestion(
       description: result.description || '',
       thumbnailUrl: result.thumbnailUrl,
         transcript: null,
+        language: null,
       degradedReason: null,
     };
   }
@@ -288,7 +298,7 @@ export async function dispatchIngestion(
     const audioTranscriptionHandler =
       options.handlers?.audioTranscriptionHandler ?? (await loadAudioTranscriptionHandler());
     const result = await audioTranscriptionHandler(item.fileId, item.fileSize);
-    return { handled: true, title: '', content: result.content, description: '', thumbnailUrl: null, transcript: result.content, degradedReason: null };
+    return { handled: true, title: '', content: result.content, description: '', thumbnailUrl: null, transcript: result.content, language: result.language, degradedReason: null };
   }
 
   // No reader applies. Say so explicitly: an item whose "content" is its own URL
@@ -300,6 +310,7 @@ export async function dispatchIngestion(
     description: '',
     thumbnailUrl: null,
         transcript: null,
+        language: null,
     degradedReason: `no reader for source "${type}": stored as the raw link`,
   };
 }

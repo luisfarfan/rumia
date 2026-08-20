@@ -29,6 +29,9 @@ ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
 -- What the source literally said, before the model rewrote it. Kept separate from
 -- `content` so the reader can always see the original words, in their own language.
 ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS transcript TEXT;
+-- ISO 639-1 code of the source. From Whisper when the item had speech, detected
+-- from the text otherwise. Drives the synthesis prompt and the translate default.
+ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS language VARCHAR(8);
 
 CREATE INDEX IF NOT EXISTS idx_captured_items_category ON captured_items(category);
 

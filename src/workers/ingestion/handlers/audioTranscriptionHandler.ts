@@ -5,6 +5,9 @@ import { bot } from '../../../bot/client.js';
 
 interface AudioTranscriptionResult {
   content: string;
+  /** The language Whisper actually heard, as ISO 639-1. Authoritative: it comes
+   *  from the audio itself, not from guessing at the text afterwards. */
+  language: string | null;
 }
 
 /**
@@ -129,5 +132,5 @@ async function executeTranscription(buffer: Buffer, ext: string): Promise<AudioT
   }
 
   console.log(`[AudioTranscription] Transcribed ${text.length} chars (language: ${result.language ?? 'auto'}).`);
-  return { content: text };
+  return { content: text, language: result.language ?? null };
 }

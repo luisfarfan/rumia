@@ -52,9 +52,17 @@ worker.on('failed', async (job: Job<{ itemId: string }> | undefined, err: Error)
   if (attemptsMade >= maxAttempts) {
     console.error(`[EmbeddingWorker] Job ${job.id} for item ${job.data.itemId} failed terminally after ${attemptsMade} attempts. Error:`, err);
     try {
+      // An enrichment stage failing does not undo the ingestion. The item's
+      // content is already stored and useful; only this stage is missing. Marking
+      // it `error` would hide a perfectly good entry behind a red badge — and a
+      // transient 503 from the model provider is enough to trigger it.
+      const item = await CapturedItemsRepo.findById(job.data.itemId);
+      const hasContent = Boolean(item?.content?.trim());
       await CapturedItemsRepo.update(job.data.itemId, {
-        status: 'error',
-        error: err.message || String(err),
+        ...(hasContent ? {} : { status: 'error' as const }),
+        error: hasContent
+          ? `vectorización no disponible: ${err.message || String(err)}`
+          : err.message || String(err),
       });
     } catch (dbError) {
       console.error(`[EmbeddingWorker] Failed to write error status to DB for item ${job.data.itemId}:`, dbError);

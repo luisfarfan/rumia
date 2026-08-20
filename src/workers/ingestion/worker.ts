@@ -5,6 +5,7 @@ import { dispatchIngestion } from './dispatchIngestion.js';
 import { runCategorizationAgent } from '../../agents/categorizationAgent.js';
 import { runFactCheckerAgent } from '../../agents/factCheckerAgent.js';
 import { embeddingQueue } from '../embedding/queue.js';
+import { detectLanguage } from '../../utils/language.js';
 
 const workerRedisClient = createRedisClient();
 
@@ -86,6 +87,7 @@ export const worker = new Worker(
       tags,
       thumbnailUrl: dispatchResult.thumbnailUrl,
       transcript: dispatchResult.transcript,
+      language: dispatchResult.language ?? detectLanguage(finalContent),
       // Keeps a degraded ingestion distinguishable from a complete one in the DB
       // and the dashboard, instead of both looking equally successful.
       error: dispatchResult.degradedReason,

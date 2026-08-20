@@ -17,8 +17,8 @@ import { dispatchIngestion, type IngestionHandlers } from '../src/workers/ingest
 function fakeHandlers(overrides: Partial<IngestionHandlers> = {}): IngestionHandlers {
   return {
     webExtractionHandler: vi.fn(async () => ({ title: 'web title', description: 'web desc', content: 'web content', thumbnailUrl: null })),
-    audioTranscriptionHandler: vi.fn(async () => ({ content: 'audio content' })),
-    socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false, transcriptionFailed: false, thumbnailUrl: 'https://cdn/poster.jpg', transcript: 'lo que se dijo' })),
+    audioTranscriptionHandler: vi.fn(async () => ({ content: 'audio content', language: 'es' })),
+    socialMediaHandler: vi.fn(async () => ({ title: 'social title', content: 'social content', visualAnalysisFailed: false, transcriptionFailed: false, thumbnailUrl: 'https://cdn/poster.jpg', transcript: 'lo que se dijo', language: 'es' })),
     photoHandler: vi.fn(async () => ({ title: 'photo title', content: 'photo content' })),
     tiktokCarouselHandler: vi.fn(async () => ({ title: 'carousel title', content: 'carousel content', thumbnailUrl: 'https://cdn/slide0.webp' })),
     socialPostHandler: vi.fn(async () => ({ title: 'meta title', content: 'meta content', visualAnalysisFailed: false, thumbnailUrl: 'https://cdn/preview.jpg' })),
@@ -88,6 +88,7 @@ describe('dispatchIngestion', () => {
         description: 'web desc',
         thumbnailUrl: null,
         transcript: null,
+        language: null,
         degradedReason: null,
       });
     }
@@ -252,6 +253,7 @@ describe('dispatchIngestion', () => {
         transcriptionFailed: false,
         thumbnailUrl: null,
         transcript: null,
+        language: null,
       })),
     });
 

@@ -109,6 +109,7 @@ export class CapturedItemsRepo {
       tags?: string[];
       thumbnailUrl?: string | null;
       transcript?: string | null;
+      language?: string | null;
     }
   ): Promise<CapturedItem | null> {
     const fields: string[] = [];
@@ -154,6 +155,10 @@ export class CapturedItemsRepo {
     if (updates.category !== undefined) {
       fields.push(`category = $${placeholderIndex++}`);
       values.push(updates.category);
+    }
+    if (updates.language !== undefined) {
+      fields.push(`language = $${placeholderIndex++}`);
+      values.push(updates.language);
     }
     if (updates.transcript !== undefined) {
       fields.push(`transcript = $${placeholderIndex++}`);

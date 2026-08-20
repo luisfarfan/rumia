@@ -1,53 +1,547 @@
 @import "tailwindcss";
 
+/* The theme toggle writes data-theme on <html>; without an explicit choice the
+   OS preference decides. Both paths have to reach the same variables. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------------------
+   Tokens
+
+   Rumia is a reading surface: entries run to thousands of characters and the
+   whole point is comparing what the source said against what the model wrote.
+   So the ground is paper, warm and low-contrast, and the ink is warm too —
+   never pure black on pure white. Night mode is the same paper turned down,
+   kept at hue 70 so it stays warm rather than the usual blue-black.
+
+   Colour is almost absent by design. The single accent is a green ink that
+   means "verified / affirmative / selected", and it is the same green used for
+   primary actions. Everything else is ink, rule, and the two alarm hues.
+--------------------------------------------------------------------------- */
+
 :root {
-  --background: #090a0f;
-  --foreground: #f3f4f6;
-  --card-bg: rgba(17, 18, 25, 0.7);
-  --card-border: rgba(255, 255, 255, 0.08);
-  --accent: #6366f1;
-  --accent-glow: rgba(99, 102, 241, 0.15);
+  color-scheme: light;
+
+  --paper: oklch(0.976 0.006 85);
+  --paper-raised: oklch(0.955 0.008 85);
+  --paper-sunken: oklch(0.934 0.010 82);
+  --paper-hover: oklch(0.945 0.012 85);
+
+  --ink: oklch(0.245 0.015 60);
+  --ink-muted: oklch(0.475 0.014 60);
+  --ink-faint: oklch(0.618 0.012 62);
+
+  --rule: oklch(0.885 0.008 78);
+  --rule-strong: oklch(0.805 0.010 78);
+
+  --accent: oklch(0.455 0.088 158);
+  --accent-hover: oklch(0.395 0.090 158);
+  --accent-soft: oklch(0.930 0.032 158);
+  --accent-line: oklch(0.800 0.055 158);
+  --on-accent: oklch(0.975 0.010 158);
+
+  --warn: oklch(0.545 0.105 66);
+  --warn-soft: oklch(0.936 0.042 78);
+  --warn-line: oklch(0.828 0.070 74);
+
+  --bad: oklch(0.505 0.160 27);
+  --bad-soft: oklch(0.936 0.036 30);
+  --bad-line: oklch(0.828 0.075 28);
+
+  --shadow-sm: 0 1px 2px oklch(0.245 0.015 60 / 0.07);
+  --shadow-md: 0 2px 4px oklch(0.245 0.015 60 / 0.05), 0 8px 20px -8px oklch(0.245 0.015 60 / 0.14);
+  --shadow-lg: 0 4px 8px oklch(0.245 0.015 60 / 0.06), 0 24px 48px -16px oklch(0.245 0.015 60 / 0.22);
+
+  /* Paper has a tooth. One hairline grid, barely there, so large empty
+     regions read as a surface instead of a void. */
+  --grain: oklch(0.245 0.015 60 / 0.028);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  overflow-x: hidden;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: oklch(0.172 0.011 72);
+  --paper-raised: oklch(0.212 0.012 72);
+  --paper-sunken: oklch(0.138 0.010 72);
+  --paper-hover: oklch(0.238 0.013 72);
+
+  --ink: oklch(0.940 0.008 85);
+  --ink-muted: oklch(0.735 0.011 80);
+  --ink-faint: oklch(0.572 0.011 78);
+
+  --rule: oklch(0.298 0.012 72);
+  --rule-strong: oklch(0.392 0.014 72);
+
+  --accent: oklch(0.760 0.120 158);
+  --accent-hover: oklch(0.820 0.125 158);
+  --accent-soft: oklch(0.278 0.048 158);
+  --accent-line: oklch(0.392 0.070 158);
+  --on-accent: oklch(0.165 0.030 158);
+
+  --warn: oklch(0.795 0.115 78);
+  --warn-soft: oklch(0.288 0.050 70);
+  --warn-line: oklch(0.402 0.070 72);
+
+  --bad: oklch(0.700 0.150 27);
+  --bad-soft: oklch(0.285 0.058 26);
+  --bad-line: oklch(0.400 0.085 26);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-md: 0 2px 4px oklch(0 0 0 / 0.32), 0 8px 20px -8px oklch(0 0 0 / 0.55);
+  --shadow-lg: 0 4px 8px oklch(0 0 0 / 0.35), 0 24px 48px -16px oklch(0 0 0 / 0.65);
+
+  --grain: oklch(0.940 0.008 85 / 0.030);
 }
 
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --paper: oklch(0.172 0.011 72);
+    --paper-raised: oklch(0.212 0.012 72);
+    --paper-sunken: oklch(0.138 0.010 72);
+    --paper-hover: oklch(0.238 0.013 72);
+
+    --ink: oklch(0.940 0.008 85);
+    --ink-muted: oklch(0.735 0.011 80);
+    --ink-faint: oklch(0.572 0.011 78);
+
+    --rule: oklch(0.298 0.012 72);
+    --rule-strong: oklch(0.392 0.014 72);
+
+    --accent: oklch(0.760 0.120 158);
+    --accent-hover: oklch(0.820 0.125 158);
+    --accent-soft: oklch(0.278 0.048 158);
+    --accent-line: oklch(0.392 0.070 158);
+    --on-accent: oklch(0.165 0.030 158);
+
+    --warn: oklch(0.795 0.115 78);
+    --warn-soft: oklch(0.288 0.050 70);
+    --warn-line: oklch(0.402 0.070 72);
+
+    --bad: oklch(0.700 0.150 27);
+    --bad-soft: oklch(0.285 0.058 26);
+    --bad-line: oklch(0.400 0.085 26);
+
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
+    --shadow-md: 0 2px 4px oklch(0 0 0 / 0.32), 0 8px 20px -8px oklch(0 0 0 / 0.55);
+    --shadow-lg: 0 4px 8px oklch(0 0 0 / 0.35), 0 24px 48px -16px oklch(0 0 0 / 0.65);
+
+    --grain: oklch(0.940 0.008 85 / 0.030);
+  }
 }
 
-::-webkit-scrollbar-track {
-  background: #090a0f;
+/* `inline` keeps the utilities pointing at the live variable, so a theme flip
+   on <html> repaints without Tailwind regenerating anything. */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-raised: var(--paper-raised);
+  --color-sunken: var(--paper-sunken);
+  --color-hover: var(--paper-hover);
+
+  --color-ink: var(--ink);
+  --color-muted: var(--ink-muted);
+  --color-faint: var(--ink-faint);
+
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-on-accent: var(--on-accent);
+
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-line: var(--bad-line);
+
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* Fixed rem steps at ~1.2. Product UI is viewed at a stable DPI; fluid
+     headings only make a sidebar look wrong. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.1;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.35;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.45;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.55;
+  --text-md: 1.0625rem;
+  --text-md--line-height: 1.68;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.35;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 1.9375rem;
+  --text-2xl--line-height: 1.15;
+
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-card: var(--shadow-sm);
+  --shadow-panel: var(--shadow-md);
+  --shadow-float: var(--shadow-lg);
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #232533;
-  border-radius: 4px;
+@layer base {
+  * {
+    border-color: var(--rule);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+  }
+
+  /* The tooth. 32px hairline grid at ~3% ink: invisible as a pattern, present
+     as a surface. Fixed so panels scroll over it rather than dragging it. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--grain) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grain) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 120% 90% at 50% 0%, black, transparent 78%);
+  }
+
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Scrollbars follow the surface instead of announcing themselves. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--rule-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink-faint);
+  }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #31354d;
+/* ---------------------------------------------------------------------------
+   Primitives
+
+   One button shape, one field shape, one label shape, used everywhere. The
+   product register earns its trust by being predictable, so these live in CSS
+   rather than being re-typed as utility strings per component.
+--------------------------------------------------------------------------- */
+
+@layer components {
+  .u-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .u-prose {
+    font-family: var(--font-serif);
+    font-size: var(--text-md);
+    line-height: 1.72;
+    color: var(--ink);
+    max-width: 68ch;
+  }
+
+  .u-prose p + p {
+    margin-top: 0.85em;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 2rem;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    background-color: var(--paper-raised);
+    color: var(--ink);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 160ms var(--ease-out-quint),
+      border-color 160ms var(--ease-out-quint),
+      color 160ms var(--ease-out-quint),
+      opacity 160ms var(--ease-out-quint);
+  }
+
+  .btn:hover:not(:disabled) {
+    background-color: var(--paper-hover);
+    border-color: var(--ink-faint);
+  }
+
+  .btn:active:not(:disabled) {
+    background-color: var(--paper-sunken);
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+
+  .btn-primary:active:not(:disabled) {
+    background-color: var(--accent-hover);
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--ink-muted);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--paper-hover);
+    border-color: transparent;
+    color: var(--ink);
+  }
+
+  .btn-sm {
+    height: 1.625rem;
+    padding-inline: 0.5rem;
+    font-size: var(--text-xs);
+  }
+
+  .btn-icon {
+    width: 2rem;
+    padding-inline: 0;
+  }
+
+  .btn-icon.btn-sm {
+    width: 1.625rem;
+  }
+
+  .field {
+    width: 100%;
+    height: 2.25rem;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    background-color: var(--paper-raised);
+    color: var(--ink);
+    font-size: var(--text-sm);
+    transition:
+      border-color 160ms var(--ease-out-quint),
+      background-color 160ms var(--ease-out-quint);
+  }
+
+  .field::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .field:hover {
+    border-color: var(--ink-faint);
+  }
+
+  .field:focus {
+    outline: none;
+    border-color: var(--accent);
+    background-color: var(--paper);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+  }
+
+  /* Metadata pill. Never carries meaning on colour alone: every variant also
+     changes its text. */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.25rem;
+    padding-inline: 0.4rem;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-xs);
+    background-color: var(--paper-sunken);
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    letter-spacing: 0.045em;
+    white-space: nowrap;
+  }
+
+  .tag-accent {
+    border-color: var(--accent-line);
+    background-color: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .tag-warn {
+    border-color: var(--warn-line);
+    background-color: var(--warn-soft);
+    color: var(--warn);
+  }
+
+  .tag-bad {
+    border-color: var(--bad-line);
+    background-color: var(--bad-soft);
+    color: var(--bad);
+  }
+
+  .well {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-md);
+    background-color: var(--paper-sunken);
+  }
+
+  .panel {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-md);
+    background-color: var(--paper-raised);
+  }
 }
 
-/* Glassmorphism utility card class */
-.glass-card {
-  background: var(--card-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--card-border);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  border-radius: 12px;
+@layer utilities {
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Fades the top edge of a scrolling column so rows dissolve under the
+     toolbar rather than being guillotined by it. */
+  .fade-top {
+    mask-image: linear-gradient(to bottom, transparent 0, black 16px);
+  }
+
+  .animate-rise {
+    animation: rise 260ms var(--ease-out-quint) both;
+  }
+
+  .animate-fade {
+    animation: fade 200ms var(--ease-out-quint) both;
+  }
+
+  .animate-slide-in {
+    animation: slide-in 280ms var(--ease-out-quint) both;
+  }
+
+  .animate-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      var(--paper-sunken) 0%,
+      var(--paper-hover) 45%,
+      var(--paper-sunken) 90%
+    );
+    background-size: 220% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
 }
 
-.glass-card-hover:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 8px 32px 0 var(--accent-glow);
-  transform: translateY(-2px);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
