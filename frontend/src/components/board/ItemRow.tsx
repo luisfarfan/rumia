@@ -60,7 +60,7 @@ export function ItemRow({
               loading="lazy"
               referrerPolicy="no-referrer"
               onError={() => setThumbBroken(true)}
-              className="size-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
             />
           ) : (
             <Icon

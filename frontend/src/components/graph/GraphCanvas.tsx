@@ -112,7 +112,35 @@ export function GraphCanvas({
     [handleRef],
   );
 
-  const radiusOf = (node: GraphNode) => 3 + Math.min(7, Math.sqrt(degree.get(node.id) ?? 0) * 1.9);
+  const radiusOf = useCallback(
+    (node: GraphNode) => 3 + Math.min(7, Math.sqrt(degree.get(node.id) ?? 0) * 1.9),
+    [degree],
+  );
+
+  /* The stock forces pack 171 nodes into a confetti blob where no edge is
+     legible. Pushing charge out, lengthening the links and adding a collision
+     radius turns it back into a diagram. */
+  useEffect(() => {
+    const graph = fg.current;
+    if (!graph || !data.nodes.length) return;
+
+    graph.d3Force('charge')?.strength(-190).distanceMax(420);
+    graph.d3Force('link')?.distance(58).strength(0.35);
+    graph.d3Force(
+      'collide',
+      forceCollide<GraphNode>().radius((node) => radiusOf(node) + 9),
+    );
+    graph.d3ReheatSimulation?.();
+  }, [data, radiusOf]);
+
+  // The graph tab stays mounted while the board is showing, so the simulation
+  // settles at a size of zero and its one automatic fit is wasted. Refit
+  // whenever the canvas actually gains a size.
+  useEffect(() => {
+    if (!size.width || !size.height) return;
+    const id = setTimeout(() => fg.current?.zoomToFit(500, 70), 60);
+    return () => clearTimeout(id);
+  }, [size.width, size.height, data.nodes.length]);
 
   const paintNode = useCallback(
     (node: GraphNode, ctx: CanvasRenderingContext2D, scale: number) => {
