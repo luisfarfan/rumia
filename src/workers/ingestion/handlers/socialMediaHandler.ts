@@ -11,6 +11,8 @@ interface SocialMediaHandlerResult {
   transcriptionFailed: boolean;
   /** The platform's poster frame, for the dashboard preview. */
   thumbnailUrl: string | null;
+  /** The source's own words, before synthesis rewrote them. */
+  transcript: string | null;
 }
 
 /**

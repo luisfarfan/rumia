@@ -44,6 +44,8 @@ interface CapturedItem {
   category?: string | null;
   tags?: string[] | null;
   thumbnailUrl?: string | null;
+  /** The source's own words, before the model rewrote them. */
+  transcript?: string | null;
   /** Why the item is incomplete, when it is. Null means nothing was missing. */
   issue?: string | null;
   verifications?: ClaimVerification[];
@@ -87,6 +89,36 @@ export default function Home() {
   const [answer, setAnswer] = useState<{ answer: string; sources: Array<{ title: string | null; url: string | null }> } | null>(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+
+  // Translation is on demand and never replaces the original: ingestion keeps the
+  // source language on purpose, so this only ever adds a second view.
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translating, setTranslating] = useState<string | null>(null);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  // Defaults to English because most captured content is already Spanish, and
+  // translating Spanish into Spanish returns the text unchanged — a button that
+  // appears to do nothing.
+  const [targetLanguage, setTargetLanguage] = useState('inglés');
+
+  const translate = async (key: string, text: string) => {
+    if (translating) return;
+    setTranslating(key);
+    setTranslateError(null);
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, target: targetLanguage }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo traducir.');
+      setTranslations((prev) => ({ ...prev, [key]: data.translated }));
+    } catch (err) {
+      setTranslateError(err instanceof Error ? err.message : 'No se pudo traducir.');
+    } finally {
+      setTranslating(null);
+    }
+  };
 
   // Graph state
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
@@ -557,12 +589,69 @@ export default function Home() {
                     </div>
                   )}
 
+                  {selectedItem.transcript && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                          Transcripción literal
+                        </h3>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={targetLanguage}
+                            onChange={(e) => setTargetLanguage(e.target.value)}
+                            className="text-[10px] px-1.5 py-1 rounded-md bg-zinc-900 border border-white/10 text-zinc-300 focus:outline-none"
+                          >
+                            {['inglés', 'español', 'português', 'français', 'deutsch'].map((l) => (
+                              <option key={l} value={l}>{l}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => translate(`t-${selectedItem.id}`, selectedItem.transcript!)}
+                            disabled={translating !== null}
+                            className="text-[10px] px-2 py-1 rounded-md bg-zinc-900 border border-white/10 text-indigo-400 hover:text-indigo-300 disabled:opacity-40"
+                          >
+                            {translating === `t-${selectedItem.id}` ? 'Traduciendo…' : 'Traducir'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-zinc-950/40 border border-white/5 text-xs text-zinc-300 leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap">
+                        {selectedItem.transcript}
+                      </div>
+                      {translations[`t-${selectedItem.id}`] && (
+                        <div className="p-4 rounded-lg bg-indigo-500/5 border border-indigo-500/20 text-xs text-zinc-200 leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap">
+                          <p className="text-[10px] uppercase tracking-wider text-indigo-400 mb-2">Traducción · {targetLanguage}</p>
+                          {translations[`t-${selectedItem.id}`]}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {selectedItem.content && (
                     <div className="space-y-3">
-                      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Extracted Text</h3>
-                      <div className="p-4 rounded-lg bg-zinc-950/40 border border-white/5 text-xs text-zinc-300 leading-relaxed max-h-96 overflow-y-auto">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                          {selectedItem.transcript ? 'Entrada redactada' : 'Extracted Text'}
+                        </h3>
+                        <button
+                          onClick={() => translate(`c-${selectedItem.id}`, selectedItem.content!)}
+                          disabled={translating !== null}
+                          className="text-[10px] px-2 py-1 rounded-md bg-zinc-900 border border-white/10 text-indigo-400 hover:text-indigo-300 disabled:opacity-40"
+                        >
+                          {translating === `c-${selectedItem.id}` ? 'Traduciendo…' : 'Traducir'}
+                        </button>
+                      </div>
+                      <div className="p-4 rounded-lg bg-zinc-950/40 border border-white/5 text-xs text-zinc-300 leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
                         {selectedItem.content}
                       </div>
+                      {translations[`c-${selectedItem.id}`] && (
+                        <div className="p-4 rounded-lg bg-indigo-500/5 border border-indigo-500/20 text-xs text-zinc-200 leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
+                          <p className="text-[10px] uppercase tracking-wider text-indigo-400 mb-2">Traducción · {targetLanguage}</p>
+                          {translations[`c-${selectedItem.id}`]}
+                        </div>
+                      )}
+                      {translateError && (
+                        <p className="text-[10px] text-red-400">{translateError}</p>
+                      )}
                     </div>
                   )}
 

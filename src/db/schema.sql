@@ -26,6 +26,9 @@ ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS category VARCHAR(50);
 ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]';
 -- Preview image for the dashboard: og:image for posts, the poster frame for video.
 ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+-- What the source literally said, before the model rewrote it. Kept separate from
+-- `content` so the reader can always see the original words, in their own language.
+ALTER TABLE captured_items ADD COLUMN IF NOT EXISTS transcript TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_captured_items_category ON captured_items(category);
 

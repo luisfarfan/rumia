@@ -16,6 +16,9 @@ export async function GET() {
         ci.category,
         ci.tags,
         ci.thumbnail_url AS "thumbnailUrl",
+        -- The source's own words, kept apart from the synthesis so the reader can
+        -- always see what was actually said rather than only the model's rewrite.
+        ci.transcript,
         -- The ingestion pipeline stores its degradation reason here: an item that
         -- arrived with a piece missing must not look identical to a complete one.
         ci.error AS "issue",

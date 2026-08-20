@@ -31,6 +31,8 @@ export interface DispatchIngestionResult {
   degradedReason: string | null;
   /** Preview image for the dashboard, when the source exposes one. */
   thumbnailUrl: string | null;
+  /** Verbatim transcript when the source had speech; null otherwise. */
+  transcript: string | null;
 }
 
 /**
@@ -141,6 +143,7 @@ export async function dispatchIngestion(
         content: result.content,
         description: '',
         thumbnailUrl: result.thumbnailUrl,
+        transcript: result.transcript,
         degradedReason: missing.length
           ? `${missing.join(' and ')} unavailable: entry built from the remaining sources`
           : null,
@@ -161,6 +164,7 @@ export async function dispatchIngestion(
             content: carousel.content,
             description: '',
             thumbnailUrl: carousel.thumbnailUrl,
+        transcript: null,
         degradedReason: null,
           };
         } catch (carouselError) {
@@ -181,6 +185,7 @@ export async function dispatchIngestion(
           content: post.content,
           description: '',
           thumbnailUrl: post.thumbnailUrl,
+        transcript: null,
           degradedReason:
             'media download unavailable: entry built from the page description, not the video itself',
         };
@@ -197,6 +202,7 @@ export async function dispatchIngestion(
         content: result.content,
         description: result.description || '',
         thumbnailUrl: result.thumbnailUrl,
+        transcript: null,
         degradedReason:
           type === 'tiktok'
             ? 'tiktok carousel unavailable: fell back to page metadata'
@@ -221,6 +227,7 @@ export async function dispatchIngestion(
       content: result.content,
       description: '',
       thumbnailUrl: result.thumbnailUrl,
+        transcript: null,
       degradedReason: result.visualAnalysisFailed
         ? 'post image unreadable: entry built from the caption only'
         : null,
@@ -246,6 +253,7 @@ export async function dispatchIngestion(
       content: result.content,
       description: '',
       thumbnailUrl: null,
+        transcript: null,
         degradedReason: null,
     };
   }
@@ -265,6 +273,7 @@ export async function dispatchIngestion(
       content: result.content,
       description: result.description || '',
       thumbnailUrl: result.thumbnailUrl,
+        transcript: null,
       degradedReason: null,
     };
   }
@@ -279,7 +288,7 @@ export async function dispatchIngestion(
     const audioTranscriptionHandler =
       options.handlers?.audioTranscriptionHandler ?? (await loadAudioTranscriptionHandler());
     const result = await audioTranscriptionHandler(item.fileId, item.fileSize);
-    return { handled: true, title: '', content: result.content, description: '', thumbnailUrl: null, degradedReason: null };
+    return { handled: true, title: '', content: result.content, description: '', thumbnailUrl: null, transcript: result.content, degradedReason: null };
   }
 
   // No reader applies. Say so explicitly: an item whose "content" is its own URL
@@ -290,6 +299,7 @@ export async function dispatchIngestion(
     content: item.rawInput,
     description: '',
     thumbnailUrl: null,
+        transcript: null,
     degradedReason: `no reader for source "${type}": stored as the raw link`,
   };
 }

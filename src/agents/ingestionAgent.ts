@@ -62,8 +62,13 @@ async function analyzeFrames(state: typeof IngestionAgentState.State) {
 
   console.log(`[IngestionAgent] Analyzing ${state.framePaths.length} keyframes via Vision LLM...`);
   
+  // Language is never hardcoded: an English prompt pulls the model to English
+  // even when the video is in Spanish, which is how a Spanish TikTok came back as
+  // an English wiki page. The source decides.
   const systemPrompt = `You are a visual video analyzer. Review the series of keyframes extracted chronologically from the video.
 Describe exactly what happens visually in the video: slides, screen shares, code blocks, people, diagrams, and actions.
+Transcribe any on-screen text verbatim, in its original language — never translate it.
+Write your description in the same language as the video's own text and speech.
 Produce a structured visual timeline.`;
 
   const userPrompt = `Here are the chronological keyframes from the video titled "${state.title}". Please summarize the visual content step by step.`;
@@ -97,9 +102,19 @@ async function synthesizeKnowledge(state: typeof IngestionAgentState.State) {
   console.log('[IngestionAgent] Node: synthesizeKnowledge');
 
   const systemPrompt = `You are an expert technical writer and knowledge base synthesizer.
-Your goal is to write a highly detailed, comprehensive, and beautiful Markdown document for a personal knowledge wiki.
-Combine the audio transcript and the visual timeline analysis into a single, cohesive, self-contained wiki page.
-Include sections like Introduction, Key Concepts, Visual Walkthrough, Summary, and Key Takeaways.`;
+Write a clear, well-structured Markdown document for a personal knowledge wiki.
+
+LANGUAGE — this rule overrides everything else: write the entire document in the
+SAME LANGUAGE as the transcript and on-screen text below. If the source is in
+Spanish, the document is in Spanish. Never translate the source into English.
+Translation is a separate action the reader asks for; it is not your job here.
+
+FIDELITY: build the document only from what the transcript and the visual
+analysis actually contain. Do not pad it with background knowledge the source
+never mentions. If the source is short, the document is short.
+
+Combine the audio transcript and the visual timeline into one coherent page,
+using whatever sections the material actually warrants.`;
 
   // Omit the visual section entirely when there is no analysis, rather than
   // passing a placeholder the model would paraphrase into the entry.
@@ -162,7 +177,15 @@ export async function runIngestionAgent(params: {
   subtitlesText: string | null;
   audioPath: string | null;
   framePaths: string[];
-}): Promise<{ title: string; content: string; visualAnalysisFailed: boolean; transcriptionFailed: boolean }> {
+}): Promise<{
+  title: string;
+  content: string;
+  /** What was literally said, before any rewriting. Kept so the reader can see
+   *  the source's own words rather than only the model's summary of them. */
+  transcript: string | null;
+  visualAnalysisFailed: boolean;
+  transcriptionFailed: boolean;
+}> {
   console.log(`[IngestionAgent] Running LangGraph for: "${params.title}"`);
 
   const result = await ingestionGraph.invoke({
@@ -178,6 +201,7 @@ export async function runIngestionAgent(params: {
   return {
     title: params.title,
     content: result.synthesizedContent || '',
+    transcript: result.audioTranscript ?? null,
     visualAnalysisFailed: result.visualAnalysisFailed === true,
     transcriptionFailed: result.transcriptionFailed === true,
   };

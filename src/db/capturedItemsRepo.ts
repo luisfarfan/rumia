@@ -108,6 +108,7 @@ export class CapturedItemsRepo {
       category?: string;
       tags?: string[];
       thumbnailUrl?: string | null;
+      transcript?: string | null;
     }
   ): Promise<CapturedItem | null> {
     const fields: string[] = [];
@@ -153,6 +154,10 @@ export class CapturedItemsRepo {
     if (updates.category !== undefined) {
       fields.push(`category = $${placeholderIndex++}`);
       values.push(updates.category);
+    }
+    if (updates.transcript !== undefined) {
+      fields.push(`transcript = $${placeholderIndex++}`);
+      values.push(updates.transcript);
     }
     if (updates.thumbnailUrl !== undefined) {
       fields.push(`thumbnail_url = $${placeholderIndex++}`);
