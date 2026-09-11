@@ -24,16 +24,30 @@ export default function Home() {
         theme={theme}
       />
 
-      {/* Both views stay mounted: the force simulation settles once, and coming
-          back from the board should not re-run the layout from scratch. */}
-      <main className="flex min-h-0 flex-1 flex-col">
-        <div className={tab === 'board' ? 'flex min-h-0 flex-1' : 'hidden'}>
+      {/* Both views are stacked and only hidden with `visibility`, never
+          `display: none`. The graph is a canvas that measures itself: with no
+          box to measure it mounts at zero, the force simulation settles
+          off-screen, and its one automatic fit is spent before anyone looks.
+          `inert` keeps the hidden pane out of focus and the accessibility tree. */}
+      <main className="relative flex min-h-0 flex-1">
+        <Pane visible={tab === 'board'}>
           <BoardView state={items} active={tab === 'board'} />
-        </div>
-        <div className={tab === 'graph' ? 'flex min-h-0 flex-1' : 'hidden'}>
+        </Pane>
+        <Pane visible={tab === 'graph'}>
           <GraphView state={graph} theme={theme.resolved} />
-        </div>
+        </Pane>
       </main>
+    </div>
+  );
+}
+
+function Pane({ visible, children }: { visible: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`absolute inset-0 flex ${visible ? '' : 'invisible'}`}
+      inert={!visible}
+    >
+      {children}
     </div>
   );
 }

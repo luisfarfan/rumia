@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Inbox, SearchX, TriangleAlert } from 'lucide-react';
 import type { CapturedItem } from '@/lib/types';
 import { useAsk } from '@/hooks/useAsk';
@@ -61,16 +61,12 @@ export function BoardView({ state, active }: { state: ItemsState; active: boolea
     });
   }, [items, query, category, onlyIssues]);
 
+  // Derived, not stored: a filter that hides the open row closes the reader on
+  // its own, and clearing the filter brings the same row back.
   const selected = useMemo(
     () => visible.find((item) => item.id === selectedId) ?? null,
     [visible, selectedId],
   );
-
-  // A filter change can hide whatever was open; the reader should close rather
-  // than keep showing a row that is no longer on the board.
-  useEffect(() => {
-    if (selectedId && !visible.some((item) => item.id === selectedId)) setSelectedId(null);
-  }, [visible, selectedId]);
 
   const step = (delta: number) => {
     if (!visible.length) return;
@@ -83,27 +79,46 @@ export function BoardView({ state, active }: { state: ItemsState; active: boolea
   };
 
   // The board stays mounted behind the graph tab so its scroll position and
-  // open reader survive the switch; its shortcuts must not stay live too.
-  const onBoard =
-    (fn: (event: KeyboardEvent) => void) =>
-    (event: KeyboardEvent) => {
+  // open reader survive the switch; its shortcuts must not stay live too, hence
+  // the `active` guard repeated in every binding.
+  useHotkeys({
+    '/': (event) => {
       if (!active) return;
       event.preventDefault();
-      fn(event);
-    };
-
-  useHotkeys({
-    '/': onBoard(() => searchRef.current?.focus()),
+      searchRef.current?.focus();
+    },
+    '?': (event) => {
+      if (!active) return;
+      event.preventDefault();
+      askRef.current?.focus();
+    },
     // Plain letters, not Cmd+K: the hook rejects anything with a modifier.
-    k: onBoard(() => step(-1)),
-    j: onBoard(() => step(1)),
-    ArrowUp: onBoard(() => step(-1)),
-    ArrowDown: onBoard(() => step(1)),
-    '?': onBoard(() => askRef.current?.focus()),
-    Escape: onBoard(() => {
+    k: (event) => {
+      if (!active) return;
+      event.preventDefault();
+      step(-1);
+    },
+    j: (event) => {
+      if (!active) return;
+      event.preventDefault();
+      step(1);
+    },
+    ArrowUp: (event) => {
+      if (!active) return;
+      event.preventDefault();
+      step(-1);
+    },
+    ArrowDown: (event) => {
+      if (!active) return;
+      event.preventDefault();
+      step(1);
+    },
+    Escape: (event) => {
+      if (!active) return;
+      event.preventDefault();
       if (selectedId) setSelectedId(null);
       else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    }),
+    },
   });
 
   return (
@@ -188,7 +203,9 @@ export function BoardView({ state, active }: { state: ItemsState; active: boolea
             className="animate-slide-in fixed inset-y-0 right-0 z-40 flex w-full max-w-[560px] flex-col border-l border-rule shadow-float lg:static lg:z-auto lg:w-[46%] lg:min-w-[420px] lg:max-w-[620px] lg:shadow-none"
             aria-label="Entrada seleccionada"
           >
-            <ItemReader item={selected} onClose={() => setSelectedId(null)} />
+            {/* Keyed so opening another entry remounts the reader: its tab and
+                scroll position reset without an effect to undo the old ones. */}
+            <ItemReader key={selected.id} item={selected} onClose={() => setSelectedId(null)} />
           </aside>
         </>
       )}

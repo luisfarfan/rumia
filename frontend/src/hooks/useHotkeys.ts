@@ -16,8 +16,12 @@ const isTyping = (target: EventTarget | null) => {
  * caret is in a field, so typing "j" into the search box never jumps the list.
  */
 export function useHotkeys(bindings: Record<string, Handler>) {
+  // Held in a ref so the listener is attached once and still sees the latest
+  // closures; written after commit rather than during render.
   const ref = useRef(bindings);
-  ref.current = bindings;
+  useEffect(() => {
+    ref.current = bindings;
+  });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

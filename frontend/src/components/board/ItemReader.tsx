@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, Ban, Clock, Languages, TriangleAlert, X } from 'lucide-react';
 import type { CapturedItem } from '@/lib/types';
 import { useTranslator } from '@/hooks/useTranslator';
@@ -14,8 +14,9 @@ import {
   relativeTime,
   TRANSLATION_TARGETS,
 } from '@/lib/format';
-import { categoryName, sourceIcon, sourceName } from '@/lib/sources';
+import { categoryName, sourceName } from '@/lib/sources';
 import { healthOf } from '@/lib/pipeline';
+import { SourceIcon } from '@/components/ui/SourceIcon';
 import { ClaimList } from './ClaimList';
 import { PipelineDetail } from './PipelineTrack';
 
@@ -28,12 +29,13 @@ type TabKey = 'entry' | 'source' | 'claims' | 'record';
  * viewport-third at a time.
  */
 export function ItemReader({ item, onClose }: { item: CapturedItem; onClose: () => void }) {
-  const [tab, setTab] = useState<TabKey>('entry');
+  // Keyed by item id upstream, so opening another entry remounts this and the
+  // initial tab and scroll position are correct without an effect to reset them.
+  const [tab, setTab] = useState<TabKey>(item.content ? 'entry' : 'record');
   const scroller = useRef<HTMLDivElement>(null);
   const translator = useTranslator(defaultTargetFor(item.language));
 
   const health = healthOf(item);
-  const Icon = sourceIcon(item.type);
   const claims = item.verifications ?? [];
   const host = hostOf(item.originalUrl);
 
@@ -49,13 +51,6 @@ export function ItemReader({ item, onClose }: { item: CapturedItem; onClose: () 
     return list;
   }, [item.content, item.transcript, claims.length]);
 
-  // A new item resets the view: staying on "Verificación" while opening
-  // something with no claims would show an empty pane.
-  useEffect(() => {
-    setTab(item.content ? 'entry' : 'record');
-    scroller.current?.scrollTo({ top: 0 });
-  }, [item.id, item.content]);
-
   const active = tabs.some((t) => t.key === tab) ? tab : tabs[0].key;
 
   return (
@@ -64,7 +59,7 @@ export function ItemReader({ item, onClose }: { item: CapturedItem; onClose: () 
         <div className="mb-2.5 flex items-start gap-3">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
             <span className="tag">
-              <Icon size={11} strokeWidth={2} aria-hidden="true" />
+              <SourceIcon type={item.type} size={11} strokeWidth={2} aria-hidden="true" />
               {sourceName(item.type)}
             </span>
             {item.category && item.category !== 'Unknown' && (

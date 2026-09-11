@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { Quote, TriangleAlert } from 'lucide-react';
 import type { CapturedItem } from '@/lib/types';
 import { excerpt, hostOf, languageName, relativeTime } from '@/lib/format';
-import { categoryName, sourceIcon, sourceName } from '@/lib/sources';
+import { categoryName, sourceName } from '@/lib/sources';
 import { healthOf } from '@/lib/pipeline';
+import { SourceIcon } from '@/components/ui/SourceIcon';
 import { PipelineTrack } from './PipelineTrack';
 
 /**
@@ -28,7 +29,6 @@ export function ItemRow({
   // CDN links expire; a broken frame is worse than no frame.
   const [thumbBroken, setThumbBroken] = useState(false);
   const health = healthOf(item);
-  const Icon = sourceIcon(item.type);
   const showThumb = Boolean(item.thumbnailUrl) && !thumbBroken;
   const claims = item.verifications?.length ?? 0;
   const title = item.title?.trim() || hostOf(item.originalUrl) || item.rawInput || 'Sin título';
@@ -63,7 +63,8 @@ export function ItemRow({
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
             />
           ) : (
-            <Icon
+            <SourceIcon
+              type={item.type}
               size={26}
               strokeWidth={1.4}
               className={health === 'failed' ? 'text-bad/60' : 'text-faint'}
@@ -78,7 +79,7 @@ export function ItemRow({
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
             <span className="tag">
-              <Icon size={11} strokeWidth={2} aria-hidden="true" />
+              <SourceIcon type={item.type} size={11} strokeWidth={2} aria-hidden="true" />
               {sourceName(item.type)}
             </span>
             {item.category && item.category !== 'Unknown' && (
@@ -102,8 +103,8 @@ export function ItemRow({
           </h3>
 
           {body && (
-            <p className="mt-1 font-serif text-sm leading-relaxed text-muted">
-              {excerpt(body, 165)}
+            <p className="mt-1 line-clamp-2 font-serif text-sm leading-relaxed text-muted">
+              {excerpt(body, 320)}
             </p>
           )}
 
